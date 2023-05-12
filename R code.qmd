@@ -1,0 +1,564 @@
+---
+title: "R Notes"
+format: html
+editor: visual
+---
+
+```{r}
+data(iris)
+data(mtcars)
+msleep <- ggplot2::msleep
+```
+
+# Base R
+
+Avoid df prefixing:
+
+```{r}
+# one option
+mean(iris$Sepal.Length)
+
+# is equivalent to
+with(iris, mean(Sepal.Length))
+```
+
+Indexing operations:
+
+```{r, eval=F}
+# 'which' function returns the index for a condition
+which(iris$Sepal.Length == max(iris$Sepal.Length))
+
+# Can also call which.max or which.min
+which.max(iris$Sepal.Length)
+
+# Can use to filter a dataset
+iris[which.max(iris$Sepal.Length), ]
+
+# Other ways of checking conditions and returning booleans
+any(iris$Sepal.Length > 5)
+
+all(iris$Sepal.Length > 5)
+```
+
+Rounding numbers:
+
+```{r}
+a <- c(2.1241, 3.86234, 4.5, -4.5, 10000.1001)
+round(a, 3)           # Rounds to 3 decimal places
+signif(a, 3)          # Rounds to 3 significant digits
+ceiling(a)            # Rounds up to the nearest integer
+floor(a)              # Rounds down to the nearest integer
+trunc(a)              # Rounds to the nearest integer, toward 0
+```
+
+Summary functions across rows/columns:
+
+```{r}
+# Sum across rows
+colSums(iris[,1:4])
+
+# If there were NA values, this is useful
+colSums(is.na(iris[,1:4]))
+
+# Other similar row and column calculations
+rowSums(iris[,1:4])
+rowMeans(iris[,1:4])
+colMeans(iris[,1:4])
+```
+
+Cumulative Functions:
+
+```{r}
+# Cumulative Functions
+library(fpp2)
+
+cumsum(a10[7:18])  # Total sales
+cummax(a10[7:18])  # Highest monthly sales
+cummin(a10[7:18])  # Lowest monthly sales
+
+# also cummean(), cumprod()
+
+plot(1:12, cumsum(a10[7:18]),
+     xlab = "Month",
+     ylab = "Total sales",
+     type = "b")
+```
+
+Lead/Lag
+
+```{r}
+(x <- 1:10)
+(lead(x))
+(lag(x))
+
+# Can use these functions for running differences
+(x - lag(x))
+```
+
+Ranking Functions
+
+```{r}
+y <- c(1, 2, 2, NA, 3, 4, 6, 12)
+
+# Rank ascending
+(min_rank(y))
+# Rank descending
+(min_rank(desc(y)))
+
+# Other rank functions
+row_number(y)
+#> [1]  1  2  3 NA  4  5
+dense_rank(y)
+#> [1]  1  2  2 NA  3  4
+percent_rank(y)
+#> [1] 0.00 0.25 0.25   NA 0.75 1.00
+cume_dist(y)
+#> [1] 0.2 0.6 0.6  NA 0.8 1.0
+```
+
+Scientific Notation:
+
+```{r}
+# Turn off scientific notation
+small_number = 3.1 * 10^-7
+format(small_number, scientific = FALSE) # Gives a character
+
+# Or you can change the options setting
+options(scipen = 1000)
+small_number
+
+# Revert
+options(scipen = 0)
+small_number
+```
+
+## Linear Algebra
+
+Vectors
+
+Basic Operations
+
+```{r}
+# Create a vector
+v <- c(2, 3, 4)
+
+# Transpose
+t(v)
+
+# Scaler multiplication
+5 * v
+
+# Adding vectors
+w <- c(6, 3, 7)
+
+v + w
+
+```
+
+Dot Products
+
+```{r}
+# Elementwise multiplication
+v*w
+
+# For dot product, need to sum
+sum(v * w)
+
+# Vector length
+sqrt(sum(v * v))
+
+# Creating vector of unit length
+v_unit <- v / sqrt(sum(v * v))
+
+sum(v_unit * v_unit)
+
+# Test for orthogonality (want 0 dot product)
+
+a <- c(0, 1)
+b <- c(1, 0)
+
+sum(a * b)
+```
+
+Matrices
+
+```{r}
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3), ncol = 3)
+A
+
+# default is to read in data column-by-column, otherwise use this:
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3), ncol = 3, byrow = TRUE)
+A
+```
+
+```{r}
+# Scalar multiplication
+2 * A
+
+# Transposition
+t(A)
+
+# Sum of Matrices
+B <- matrix(c(1, 0, 1, 2, 3, 1, 2, 0, 4), ncol = 3)
+
+A + B
+```
+
+```{r}
+# Vector multiplication
+A %*% v
+
+# Don't use 
+A * v 
+```
+
+```{r}
+# Matrix multiplication
+
+# Requires number of columns in first matrix match number of rows in second
+# (m x n) with (n x p)
+
+A = matrix(c(1, 4, 6, 3, 7, 2), ncol = 2)
+
+B = matrix(c(4, 3), ncol = 1)
+
+# (3x2) %*% (2x1) yields (3x1)
+A %*% B
+```
+
+```{r}
+# 0 and 1 matrix
+matrix(0, ncol = 5, nrow = 5)
+matrix(1, ncol = 7, nrow = 8)
+
+# Diagonal matrix
+diag(c(4, 5, 2, 6, 7))
+
+# Identity in R^5
+diag(1, 5)
+
+# Using diag on a matrix returns the diagonal entries
+diag(A)
+```
+
+```{r}
+# Find the inverse of a matrix (must be square)
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3, 2, 11, 6, 7, 8, 0, 5), ncol = 4)
+
+A_inv <- solve(A)
+
+# Double check
+round(A_inv %*% A, 10) 
+```
+
+Solving Systems
+
+```{r}
+# Solving a linear system of equations
+v <- c(6, 4, 2, 1)
+
+# To solve Ax = b for x...
+A_inv <- solve(A)
+
+A_inv %*% v
+
+# Check
+A %*% (A_inv %*% v)
+```
+
+```{r}
+# Using pracma to find rref
+library(pracma)
+
+C = matrix(c(1, 4, 6, 3, 7, 2), ncol = 2)
+
+rref(C)
+```
+
+Determinants
+
+```{r}
+# Determinants
+det(A)
+
+# If a multiple of one row in A is added to another to produce B,
+# then det(A) = det(b)
+
+A <- matrix(c(1, 2, 4, 0, 2, 3, 1, 4, 5), nrow = 3)
+E <- matrix(c(1, 0, 0, 0, 1, -2, 0, 0, 1), nrow = 3)
+
+det(A)
+det(E %*% A)
+```
+
+Eigenvalues
+
+```{r}
+A <- matrix(c(1, 2, 4, 0, 2, 3, 1, 4, 5), nrow = 3)
+A
+
+eigen(A)
+```
+
+# Tidyverse
+
+## pipes
+
+```{r}
+iris |> # new base R pipe
+  count(Species)
+
+# magrittr pipe 
+library(magrittr)
+
+iris %>%
+  summarize(ncol(.), nrow(.))
+```
+
+## dplyr
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+# Some summary functions
+iris %>%
+  summarize(
+    n(),
+    n_distinct(Species),
+    mean(Petal.Length),
+    median(Petal.Length),
+    sum(Petal.Length),
+    first(Petal.Length),
+    last(Petal.Length),
+    nth(Petal.Length, 5),
+    quantile(Petal.Length, .975),
+    min(Petal.Length),
+    max(Petal.Length),
+    IQR(Petal.Length),
+    mad(Petal.Length),
+    sd(Petal.Length),
+    var(Petal.Length)
+  ) %>%
+  t()
+
+# Count function
+iris %>%
+  count(
+    Species,
+    sort = T,
+    wt = NULL,
+    name = 'Counts'
+    )
+
+# Also tally(), add_count(), add_tally()
+iris %>%
+  tally() # like nrow()
+
+iris %>%
+  group_by(Species) %>%
+  slice(1:5) %>%
+  add_tally() # same as mutate(n = n())
+
+iris %>%
+  add_count(Species) %>%
+  add_tally()
+
+iris %>%
+  group_by(
+    Species,
+    .add = FALSE, # Overrides existing groups
+    .drop = TRUE # Drops levels not in the data
+    ) %>% 
+  summarize(
+    mad(Petal.Length)
+  ) 
+```
+
+Examples using slice functions
+
+```{r}
+iris %>%
+  group_by(Species) %>%
+  filter(Petal.Length >= 5) %>%
+  add_tally() %>%
+  print(n = 30)
+
+iris %>%
+  group_by(Species) %>%
+  slice(10:13)
+
+iris %>%
+  group_by(Species) %>%
+  slice_sample(n = 2)
+
+iris %>%
+  group_by(Species) %>%
+  slice_head(n = 2)
+
+iris %>%
+  group_by(Species) %>%
+  slice_tail(n = 2)
+
+iris %>%
+  group_by(Species) %>%
+  slice_max(Petal.Length)
+
+iris %>%
+  group_by(Species) %>%
+  slice_min(Petal.Length)
+```
+
+Variable Manipulation
+
+```{r}
+iris %>%
+  pull(
+    var = -2, # returns second to last column
+    name = Species # specifies names for the vector
+  )
+```
+
+Helper functions for select() or across()
+
+```{r}
+iris %>%
+  select(contains('Petal'))
+
+iris %>%
+  # select(starts_with('Petal'))
+  select(ends_with('Length')) 
+```
+
+## tidyr
+
+Expand a df to include all combos of given factors
+
+```{r}
+df <- tibble(
+  x = c('A', 'B', 'C'),
+  y = c('red', 'blue', 'yellow'), 
+  z = c(5, 4, 2)
+  ) 
+
+df %>%
+  tidyr::complete(x, y)
+
+df %>%
+  tidyr::expand(x, y)
+```
+
+Combine or separate columns
+
+```{r}
+df <- tibble(
+  month = c(1, 2, 3, 1, 3, 1),
+  day = c(10, 11, 12, 29, 31, 2)
+)
+
+(df_united <- df %>%
+  tidyr::unite(
+    col = month_day,
+    month,
+    day,
+    sep = '-'
+  )
+)
+
+df_united %>%
+  tidyr::separate(
+    month_day,
+    into = c('month2', 'day2')
+  )
+```
+
+Dealing with NA values
+
+```{r}
+(df <- tibble(
+  x = c('A', 'B', NA, 'C', 'B', 'A', 'A', 'C'),
+  y = c(5, NA, 11, 2, 6, 4, NA, 2)
+))
+
+df %>%
+  tidyr::drop_na()
+
+df %>%
+  tidyr::fill(x)
+
+df %>%
+  tidyr::replace_na(
+    list(x = 'HELLO',
+         y = 999)
+  )
+```
+
+nesting
+
+```{r}
+df1 <- iris %>%
+  select(Species, starts_with('Sepal')) %>%
+  group_by(Species) %>%
+  tidyr::nest(
+    data = c(starts_with('Sepal'))
+  )
+
+df1$data[[1]]
+
+df2 <- iris %>%
+  group_by(Species) %>%
+  summarize(q = list(quantile(Sepal.Width)))
+
+df2$q[[1]]
+```
+
+## forcats
+
+```{r}
+df <- tibble(
+  x = factor(c('A', 'A', 'B', 'C', 'C', 'C')),
+  y = factor(c('red', 'green', 'blue', 'yellow', 'yellow', 'red')), 
+  z = c(5, 4, 2, 7, 1, 5)
+  ) 
+
+forcats::fct_count(df$x)
+forcats::fct_match(df$x, 'B')
+forcats::fct_unique(df$x)
+
+# Combine factors
+forcats::fct_c(df$x, df$y)
+forcats::fct_cross(df$x, df$y)
+```
+
+```{r}
+levels(df$x)
+forcats::fct_relevel(df$x, c('B', 'A', 'C'))
+
+# Reorder by frequency
+forcats::fct_infreq(df$x)
+# Or by order in which they appear in data
+forcats::fct_inorder(df$x)
+# reorder by reference to another variable
+forcats::fct_reorder(df$x, df$z, .fun = max, .desc = TRUE)
+```
+
+```{r}
+# Manipulate levels
+
+df %>%
+  mutate(x2 = forcats::fct_lump_min(x, min = 2), # lump if appear < min times
+         x3 = forcats::fct_lump_n(x, n = 1), # lump all but the n most freq
+         x4 = forcats::fct_lump_lowfreq(x, other_level = 'Other!')
+         # lumps together the least frequent levels, 
+         # ensuring that "other" is still the smallest level.
+         )
+
+forcats::fct_other(df$x, keep = c('A', 'B'), other_level = 'OTHER')
+
+df$x <- forcats::fct_expand(df$x, 'D') # add a level to x
+forcats::fct_drop(df$x) # drop unused levels
+```

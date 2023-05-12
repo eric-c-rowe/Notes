@@ -1,0 +1,1214 @@
+---
+title: "Bayesian Workflow"
+format:
+  html:
+    theme: default
+    toc: true
+---
+
+```{r, include=F}
+packages <- c('rethinking', 'rstan', 'bayesplot', 
+              'tidybayes', 'tidyverse', 'shinystan')
+
+lapply(packages, library, character.only=T)
+
+# For execution on a local, multicore CPU with excess RAM
+options(mc.cores = parallel::detectCores())
+# To avoid recompilation of unchanged Stan programs
+rstan_options(auto_write = TRUE)
+```
+
+# Introduction
+
+Bayesian inference is just the formulation and computation of conditional probability or probability densities, $p(θ|y) ∝ p(θ)p(y|θ)$. Bayesian workflow includes the three steps of model building, inference, and model checking/improvement, along with the comparison of different models, not just for the purpose of model choice or model averaging but more importantly to better understand these models.
+
+References: 
+
+  * Gelman et. al. "Bayesian Workflow": http://www.stat.columbia.edu/~gelman/research/unpublished/Bayesian_Workflow_article.pdf
+  * McElreath's *Statistical Rethinking*
+  * Mike Lawrence's video lectures:  https://www.youtube.com/playlist?list=PLu77iLvsj_GNmWqDdX-26kZ56dCZqkzBO
+
+![](BDA-Workflow-Chart.png)
+
+# Working Example
+
+Example involves identifying proportions of folks selected for a program. The selection probability depends on their education and pay plan, and the highly educated people are more likely to be in the pay plan with the high selection probability. The goal is to correctly identify the different probabilities. 
+
+```{r}
+df <- tibble(
+  x = 1:1e4,
+  edu = rbinom(1e4, 1, .3), # 1 = 'highly educated', 0 = 'normal',
+  edu_grp = ifelse(edu == 1, 'high_edu', 'low_edu'),
+  pp = rbinom(1e4, 1, ifelse(edu == 1, .2, .05)), # chance of being CC dep on edu
+  pp_grp = ifelse(pp == 1, 'CC', 'GS'),
+  base_prob = .15,
+  edu_prob = ifelse(edu == 1, .2, 0),
+  pp_add = ifelse(pp == 1, .35, 0),
+  prob = edu_prob + pp_add + base_prob,
+  y = rbinom(1e4, 1, prob)
+)
+```
+
+# Pick an Initial Model
+
+General advice:
+
+  * Adapt from what has been done before
+  * Start simple and build up features
+  * Think of model construction as 'modular', with some modules serving as temporary placeholders while you work on other elements. 
+
+## Prepare Data
+
+Need to format data as a list for Stan.
+
+Using TidyBayes:
+
+```{r}
+# Vanilla method
+stan_data <- list(
+  n = nrow(df),
+  edu = df$edu,
+  pp = df$pp,
+  y = df$y
+)
+
+# tidybase option
+tidy_df <- compose_data(df)
+# automatically formats the data into a list
+# converts factors to numeric indices
+# stores number of levels in factors
+
+names(tidy_df)
+# Note that "n_[factor]" gets added for number of factor levels
+```
+
+
+## Scaling 
+
+* Easily interpreted parameters are best: use natural scales and model them as independent, if possible, or with an easily interpreted dependence structure.
+
+* Partial pooling in hierarchical models can be more effective with scale-free parameters. 
+
+* In many cases you can put parameters on a unit scale by using logarithmic or logit transformations or by standardizing. 
+
+* This is a general phenomenon in regression models where as the number of predictors increases, we need stronger priors on model coefficients (or enough data) if we want to push the model away from extreme predictions.
+
+## Choosing Priors
+
+* If the priors are roughly on a unit scale, then here are 5 levels of priors:
+  + Flat prior (not usually recommended);
+  + Super-vague but proper prior: normal(0, 1e6) (not usually recommended);
+  + Weakly informative prior, very weak: normal(0, 10);
+  + Generic weakly informative prior: normal(0, 1);
+  + Specific informative prior: normal(0.4, 0.2) or whatever. Sometimes this can be expressed as a scaling followed by a generic prior: theta = 0.4 + 0.2*z; z ~ normal(0, 1);
+
+* What counts as a 'weak' or 'strong' prior is context sensitive. For example, consider reasonable effect sizes - perhaps a normal(0, 1) is way too generous.
+
+* The general idea behind a "weakly informative" prior is that it will be overwhelmed by a large amount of data, but will have a strong influence if data are limited. 
+
+* Generally best to have independent priors, partly for convenience and partly for interpretability. 
+  + Can check prior independence for hierarchical model with posterior predictive checks. 
+  + When explicitly modeling prior *dependence*, it is common to use a multivariate model such as the LKJ prior in which prior independence (a diagonal covariance matrix) is the baseline.
+  
+General principles:
+* For HCMC, conjugacy doesn't matter.
+* Computational goal in Stan: reducing instability which typically arises from bad geometry in the posterior, heavy tails that can cause Stan to adapt poorly.
+* Weakly informative prior should contain enough information to regularize: the idea is that the prior rules out unreasonable parameter values but is not so strong as to rule out values that might make sense
+* Weakly informative rather than fully informative: the idea is that the loss in precision by making the prior a bit too weak (compared to the true population distribution of parameters or the current expert state of knowledge) is less serious than the gain in robustness by including parts of parameter space that might be relevant. 
+* When using informative priors, be explicit about every choice; write a sentence about each parameter in the model.
+* Don't use uniform priors, or hard constraints more generally, unless the bounds represent true constraints (such as scale parameters being restricted to be positive, or correlations restricted to being between -1 and 1). Some examples:
+  + You think a parameter could be anywhere from 0 to 1, so you set the prior to uniform(0,1). Try normal(.5,.5) instead.
+  + A scale parameter is restricted to be positive and you want to give it a vague prior, so you set to uniform(0,100) (or, worse, uniform(0,1000)). If you just want to be vague, you could just specify no prior at all, which in Stan is equivalent to a noninformative uniform prior on the parameter. Or you could give a weak prior such as exponential with expected value 10 (that's exponential(0.1)) or half-normal(0,10) (that's implemented as normal(0,10) with a <lower=0> constraint in the declaration of the parameter) or half-Cauchy(0,5) or even something more informative such as half-normal(0,1) or half-t(3,0,1).
+* Super weak priors can be useful to diagnose glaring problems. 
+  + For example, normal(0,100) priors added for literally every parameter in the model. The assumption is that everything's on unit scale so these priors will have no effect--unless the model is blowing up from nonidentifiablity. 
+  
+### Beta Prior
+
+Useful priors when dealing with probability values: beta distribution
+
+This is particularly helpful with a binomial model like this because it is a conjugate prior and the posterior is very easy to analytically determine. 
+
+The beta distributions looks like:
+
+beta( theta | a, b) = ( theta ^ (a - 1) * (1 - theta) ^ (b - 1) ) / B( a, b )
+
+Where 'B' is the beta function (which can also be expressed as the gamma function). Beta( a, b ) = the integral from 0 to 1, theta ^ (a - 1) * (1 - theta) ^ (b - 1) dtheta. It's just a normalizing constant here. The 'beta()' function in R calls this. 
+
+* A beta distribution with a = b = 1 is uniform. 
+
+It's useful to know some general properties of the beta dist to help with specifying priors:
+
+* The mean mu = a / (a + b) for a > 1 and b > 1
+* The mode omega = (a - 1) / (a + b - 2) for a > 1 and b > 1
+* When a = b, the mean and mode are .5, when a > b the mean/mode are > .5 and when a < b the mean/mode are < .5. 
+* The 'concentration' kappa = a + b. As this gets larger the distribution gets narrower. 
+* Solving for a and b in terms of the mean, mode, and kappa:
+  + a = mu * kappa and b = (1 - mu) * kappa
+  + a = omega * (kappa - 2) + 1 and b = (1 - omega) * (kappa - 2) + 1 for kappa > 2
+  
+Can also specify using the standard deviation - though the sd should be less than .28867 (the sd of the uniform). 
+* a = mu * ( ( (mu * (1 - mu)) / sigma^2 ) - 1 )
+* b = (1 - mu) * ( ( (mu * (1 - mu)) / sigma^2 ) - 1)
+
+The posterior for the binomial model with the beta prior is very simple. If the prior is beta(theta | a, b) and the data have z heads and N trials, then the posterior is beta( theta | z + a, N - z + b).
+
+## Prior Predictive Checks
+
+* Because prior predictive checks make use of simulations from the model rather than observed data, they provide a way to refine the model without using the data multiple times.
+
+If the prior contradicts domain knowledge:
+
+Modifying the model:
+* Pick a new starting model
+* Replace a model component
+* Enrich/expand the model
+* Use an approximation
+* Add more data
+* Modify Priors
+
+Here is a possible model simply predicting the probability of an award based on education status, ignoring pay plan.
+
+```{r}
+# Proposed Stan Model just using education
+stan_program <- '
+data {
+  int n;
+  int n_edu_grp;
+  int<lower=1, upper=n_edu_grp> edu_grp[n];
+  int<lower=0, upper=1> y[n];
+}
+parameters {
+  real intercept;
+  real b[n_edu_grp]; 
+}
+model {
+  vector[n] p;
+  for (i in 1:n) {
+      p[i] = inv_logit(intercept + b[edu_grp[i]]);
+  }
+  y ~ binomial(1, p);
+  intercept ~ normal(0, 1);
+  b ~ normal(0, 0.2);
+}
+'
+
+# Second model also using pay plan
+stan_program2 <- '
+data {
+  int n;
+  int n_edu_grp;
+  int n_pp_grp;
+  int<lower=1, upper=n_edu_grp> edu_grp[n];
+  int<lower=1, upper=n_pp_grp> pp_grp[n];
+  int<lower=0, upper=1> y[n];
+}
+parameters {
+  real intercept;
+  real b[n_edu_grp];
+  real c[n_pp_grp];
+}
+model {
+  vector[n] p;
+  for (i in 1:n) {
+      p[i] = inv_logit(intercept + b[edu_grp[i]] + c[pp_grp[i]]);
+  }
+  y ~ binomial(1, p);
+  intercept ~ normal(0, 1);
+  b ~ normal(0, 0.2);
+  c ~ normal(0, 0.2);
+}
+'
+```
+
+```{r}
+# Prior predictive checks
+n = nrow(df)
+
+tibble(
+  intercept = rnorm(n, 0, 1),
+  b = rnorm(n, 0, .2),
+  estimate = plogis(intercept + b)
+) %>%
+  ggplot() +
+  geom_histogram(aes(estimate))
+
+# Very weakly informed, somewhat skeptical of extreme values
+
+# Check for model 2
+tibble(
+  intercept = rnorm(n, 0, 1),
+  b = rnorm(n, 0, .2),
+  c = rnorm(n, 0, .2),
+  estimate = plogis(intercept + b + c)
+) %>%
+  ggplot() +
+  geom_histogram(aes(estimate))
+
+# Also seems okay
+```
+
+# Fit/Validate Model
+
+Example model fit:
+
+```{r}
+model <- stan(model_code = stan_program,
+              data = tidy_df)
+
+model2 <- stan(model_code = stan_program2,
+               data = tidy_df)
+```
+
+## Convergence Diagnostics
+
+* Trace Plots
++ Grey area is the warmup phase. 
++ You want the chains to be 'stationary'. The 'hairy caterpillar' test. 
++ Typically you run multiple tests, want chains to converge to same distribution (4 is common, but can run different chain for each computer core - specify with cores command). So the four chains should all be on top of one another in roughly the same place. 
+
+* Trace Rank Plots
++ Y axis show ranks rather than actual parameter values. 
++ A quick visual way to assess whether one of the chains is consistently above or below the others. You want the colors to zigzag above and below one another.
+
+* R-hat 
++ A ratio of variances: within chain variance and between chain variance. 
++ As total variance shrinks to average variance within chains, R-hat approaches 1.
++ Doesn't give a guarantee. 
++ Value > 1.1 usually indicates a problem
+
+* Tree Depth
++ Stan has a maximum trajectory length used to avoid infinite loops. For complex models this might fail. 
++ Use check_treedepth(fit) from Betancourt's stan_utility.R to check for this. 
++ If a problem is identified, try rerunning the model with the additional option
+
+control=list(max_treedepth=15) # or some number > 10
+
+Then recheck using
+
+check_treedepth(fit, 15)
+
+* N-eff
++ Estimates number of 'effective' samples. 
++ Asks 'how long would each chain be, if each sample was independent of the one before it? Autocorrelation implies fewer effective samples.
++ Low n-eff relative to the number of iterations can indicate a problem.
+
+* Check E-BFMI
++ The "Bayesian Fraction of Missing Information"
++ Use Betancourt's 'check_energy(fit)' from stan_utility.R
++ The explanation: 
+
+"Hamiltonian Monte Carlo proceeds in two phases – the algorithm first simulates a Hamiltonian trajectory that rapidly explores a slice of the target parameter space before resampling the auxiliary momenta to allow the next trajectory to explore another slice of the target parameter space. Unfortunately, the jumps between these slices induced by the momenta resamplings can be short, which often leads to slow exploration."
+
++ The problems with low E-BFMI are fixed by changing the model specification, but there's no generic solution here.
+
+* Divergent Transition
++ A kind of rejected proposal for moving around the posterior space.
++ Many DTs can imply poor exploration and possible bias.
++ They don't destroy a project, but you should try to build a model to avoid them as much as possible. 
++ Try a non-centered parameterization.
++ Try Betancourt's 'check_div(fit)' function in stan_utility.R
++ Try increasing the 'adapt_delta' value ("control=list(adapt_delta=0.9)")
++ If the divergences do not completely disappear as adapt_delta approaches 1, then need to tweak model specification. 
+
+* Use shinystan for diagnostics
++ launch_shinystan(fit)
+
+* Switch to a non-centered parameterization. This involves shifting the definition of random variables so that some random variable is not used within the specification of a different random variable. 
++ A common case is taking a normal RV - mu ~ normal(alpha, sigma) - and redefining mu in terms of a standard normal RV transformed: mu ~ alpha + sigma * normal(0, 1).
+
+### Useful Diagnostic Functions
+
+```{r}
+# Trace Plot
+mcmc_trace(MODEL, pars = "PARAMETER")
+
+# Density Overlay of Different Chains
+mcmc_dens_overlay(MODEL, pars = "PARAMETER")
+# --- chains should have similar densities
+
+# Autocorrelation Function
+mcmc_acf(MODEL, pars = "PARAMETER")
+# --- plot should drop down to around 0 quickly
+```
+
+
+## Fake data simulation
+
+* Best check on whether statistical computation was correctly done is to fit the model to data and check whether the fit is good. The best data to use are simulated data, because you know what the parameters should actually be. 
+* Pick parameters that seem reasonable a priori and construct a fake dataset of similar size/shape/structure as the actual data. 
+* Given the fit model, check point estimates and coverage intervals to see if the model comes close to getting the true parameter values. Doing this once can at least reveal blatant errors.
+
+## Simulation-based calibration
+
+If the computation is invalid:
+* Simplify the model
+* Implement model components separately
+* Run for small number of iterations
+* Run on subset of the data
+* Stacking individual chains
+* Check for multimodality
+* Reparametrize
+* Plot intermediate quantities
+* Add prior information
+* Add more data
+* Give up
+
+If the computation is accepted:
+
+# Evaluate the Model
+
+Extract Posterior
+
+```{r}
+# Check model
+print(model)
+
+# Default rstan method to extract posterior:
+post = rstan::extract(model)
+
+# tidybayes alternative, which brings back the factor labels
+post = model %>%
+  recover_types(df) %>%
+  gather_draws(intercept, b[edu_grp]) 
+```
+
+Examining the posterior:
+
+"...tidybayes provides a family of functions for generating point summaries and intervals from draws in a tidy format. These functions follow the naming scheme [median|mean|mode]_[qi|hdi], for example, median_qi, mean_qi, mode_hdi, and so on. The first name (before the _) indicates the type of point summary, and the second name indicates the type of interval."
+
+```{r}
+model %>%
+  recover_types(df) %>%
+  gather_draws(b[edu_grp]) %>%
+  median_qi()
+
+post %>%
+  mean_hdi()
+
+post %>%
+  mutate(.value = plogis(.value)) %>%
+  mean_hdi()
+
+post %>%
+  ggplot() +
+  stat_halfeye(aes(y = fct_rev(edu_grp), x = plogis(.value)),
+               .width = c(.90, .5))
+
+# Just using tidyverse functions to get summary values
+post %>%
+  pivot_longer(everything()) %>% 
+  group_by(name) %>%
+  summarise(mean = mean(value),
+            sd   = sd(value),
+            `2.5%`  = quantile(value, probs = .025),
+            `97.5%` = quantile(value, probs = .975)) %>%
+  mutate_if(is.numeric, round, digits = 2)
+
+# Actual Values
+# base .15, high edu + .2 (.35 high edu, no CC), CC + .35
+# Without considering CC, everything seems quite off
+
+model2 %>%
+  recover_types(df) %>%
+  gather_draws(intercept, b[edu_grp], c[pp_grp]) %>%
+  mean_hdi()
+
+# Expected value for high edu non-cc:
+plogis(-.404 + .529 - .762) # True value = .35
+# Expected value for low edu cc:
+plogis(-.404 -.543 + .734) # True value = .5
+# Expected value for high edu cc:
+plogis(-.404 + .529 + .734) # True value = .7
+
+# Overall this second model performs very well
+```
+
+
+## Posterior Predictive Checks
+## Cross Validation
+## Influence of Individual Data Points
+## Influence of the Prior
+## Prediction
+## Poststratification
+
+# Compare Models
+
+## Information Entropy
+
+Information is “the reduction in uncertainty when we learn an outcome”.
+
+Information entropy is a way of measuring that uncertainty in a way that is (a) continuous, (b) increases as the number of possible events increases, and (c) is additive.
+
+H(p) = -E(log(pi))
+
+The uncertainty contained in a probability distribution is the average log-probability of an event. 
+
+Example: rain/shine distribution for temperate climate vs. for desert. Because it hardly ever rains in the latter, the information entropy is very low - so there's not much uncertainty about any given day. 
+
+```{r}
+# Example code
+tibble(place  = c("Temperate", "Desert"),
+       p_rain = c(.3, .01)) %>% 
+  mutate(p_shine = 1 - p_rain) %>% 
+  group_by(place) %>% 
+  mutate(h_p = -1 * (p_rain * log(p_rain) + p_shine * log(p_shine)))
+```
+
+## Divergence
+
+Aka Kullback-Leibler divergence or KL divergence:
+
+* Divergence: The additional uncertainty induced by using probabilities from one distribution to describe another distribution.
+
+If you are using a distribution p to describe a distribution q, the additional uncertainty introduced - i.e. the divergence - is given as:
+
+* D(p,q) = ∑pi * (log(pi) - log(qi)) = ∑pi * log(pi / qi)
+
+i.e. this is the average difference in log probability between the target (p) and the model (q). 
+
+When p = q the divergence is 0. 
+
+```{r}
+# simple binary example
+tibble(p_1 = .3,
+       p_2 = .7,
+       q_1 = .25,
+       q_2 = .75) %>%
+  mutate(d_kl = (p_1 * log(p_1 / q_1)) + (p_2 * log(p_2 / q_2)))
+```
+
+Given multiple choices to model a distribution q, the one with the smallest divergence is the most accurate. 
+
+Divergence is derived from the notion of *cross entropy*:
+
+* H(p, q) = -∑pi * log(qi)
+
+The idea is that events arise according to the p's, but are expected according to the q's, so the entropy is inflated. Divergence is just the difference between the actual entropy and the cross entropy. 
+
+* D(p, q) = H(p, q) - H(p) 
+
+Note that, in general, H(p, q) != H(q, p), and so divergence is not symmetric. 
+
+```{r}
+# example showing the non-symmetry
+tibble(direction = c("Earth to Mars", "Mars to Earth"),
+       p_1       = c(.01, .7),
+       q_1       = c(.7, .01)) %>% 
+  mutate(p_2 = 1 - p_1,
+         q_2 = 1 - q_1) %>%
+  mutate(d_kl = (p_1 * log(p_1 / q_1)) + (p_2 * log(p_2 / q_2)))
+```
+
+The point of all the preceding material about information theory and divergence is to establish both:
+
+* How to measure the distance of a model from our target. Information theory gives us the distance measure we need, the KL divergence.
+
+* How to estimate the divergence. Having identified the right measure of distance, we now need a way to estimate it in real statistical modeling tasks.
+
+But how to compare two distributions when you don't actually know the target distribution? The Elog(p) term usually drops out.
+
+* D(p, q) - D(p, r) = 
+    (-∑pi * log(qi)) - (-∑pi * log(ri)) = 
+        E log(qi) - E log(ri)
+
+(I think we're assuming that the distributions are independent)
+
+In light of all this, we usually just calculate a *log probability score* as follows:
+
+* S(q) = ∑log(qi)
+
+(Similar to Elog(qi), just without dividing by the total number of observations - this doesn't matter for the comparison.)
+
+*Deviance* is essentially the log probability score, you just multiply by -2 (for historical reasons important to frequentists). 
+
+* Deviance(q) = -2 * ∑log(qi)
+
+(It turns out that the differences between two D(q) values follows a χ2 distribution (Wilks, 1938), which frequentists like to reference for the purpose of null-hypothesis significance testing. Many Bayesians, however, are not into all that significance-testing stuff and they aren’t as inclined to multiply ∑log(pi) by −2 for the simple purpose of scaling the associated difference distribution to follow the χ2.)
+
+```{r}
+# Data used in their examples
+d <- 
+  tibble(species = c("afarensis", "africanus", "habilis", "boisei", "rudolfensis", "ergaster", "sapiens"), 
+         brain   = c(438, 452, 612, 521, 752, 871, 1350), 
+         mass    = c(37.0, 35.5, 34.5, 41.5, 55.5, 61.0, 53.5)) %>% 
+  mutate(mass_std  = (mass - mean(mass)) / sd(mass),
+         brain_std = brain / max(brain))
+
+library(brms)
+
+b7.1 <- 
+  brm(data = d, 
+      family = gaussian(),
+      brain_std ~ 1 + mass_std,
+      prior = c(prior(normal(0.5, 1), class = Intercept),
+                prior(normal(0, 10), class = b),
+                prior(exponential(4.189324), class = sigma)),
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 7)
+
+# BRMS has a log likelihood function
+log_lik(b7.1)
+```
+
+To apply this in the Bayesian context, need to use the entire posterior distribution. So you find the log of the *average* probability for each observation i, where the average is taken over the entire posterior. *Log pointwise predictive density*:
+
+* lppd(y, theta) = ∑i log 1/S ∑s p(y_i | theta_s)
+
+```{r}
+log_sum_exp <- function( x ) {
+  # computes the log of the sum of exponentiated values
+    xmax <- max(x)
+    xsum <- sum( exp( x - xmax ) )
+    xmax + log(xsum)
+}
+
+lppd_b <- function(brm_fit) {
+  
+  lp <- log_lik(brm_fit)
+  
+  ni <- ncol(lp)
+  ns <- nrow(lp)
+  
+  f <- function(i) {log_sum_exp(lp[, i]) - log(ns)}
+  
+  sapply(1:ni, f)
+  
+}
+
+lppd_b(b7.1)
+```
+
+The output are log probability scores for specific observations. Add them up and you get the total log probability score for the model and the data. Larger values are better (or you can calculate deviance, in which case smaller is better). 
+
+## LOO-CV & WAIC
+
+Evaluating out of sample performance:
+
+Leave One Out Cross Validation - great for estimating accuracy, but costly in terms of time/memory required to fit all the models. Solution: Vehtari, Gelman, and Gabry (2017) proposed Pareto smoothed importance-sampling leave-one-out cross-validation (PSIS-LOO-CV) as an efficient way to approximate true LOO-CV.
+
+Or use information criteria to compute an expected score out of sample. Information criteria construct a theoretical estimate of the relative out-of-sample KL divergence.
+
+Oldest and most restrictive: Akaike Information Criterion (AIC):
+
+* AIC = D_train + 2p = -2 * lppd + 2p
+
+where p is the number of free parameters in the posterior distribution. This assumes that:
+
+* Prior are flat or overwhelmed by likelihood
+* Posterior is approximately multivariate Gaussian
+* Sample size N is much greater than number of parameters k
+
+A common alternative is the Deviance Information Criterion (DIC). This works with informative priors but assumes the posterior is multivariate Gaussian and that N > k. 
+
+A more general alterantive: *Widely Applicable Information Criterion* (WAIC). 
+
+* WAIC(y, theta) = -2 * ( lppd - ∑ var_theta * log p(y_i | theta) )
+
+y is the data, theta is the posterior distribution. 
+
+```{r}
+# WAIC Calculation
+data(cars)
+
+b7.m <- 
+  brm(data = cars, 
+      family = gaussian,
+      dist ~ 1 + speed,
+      prior = c(prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 10), class = b),
+                prior(exponential(1), class = sigma)),
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 7)
+
+n_cases <- nrow(cars)
+
+ll <-
+  log_lik(b7.m) %>%
+  data.frame() %>%
+  set_names(c(str_c(0, 1:9), 10:n_cases))
+
+dim(ll)
+
+# Next compute lppd
+log_mu_l <-
+  ll %>% 
+  pivot_longer(everything(),
+               names_to = "i",
+               values_to = "loglikelihood") %>% 
+  mutate(likelihood = exp(loglikelihood)) %>%
+  group_by(i) %>% 
+  summarise(log_mean_likelihood = mean(likelihood) %>% log())
+
+lppd <-
+  log_mu_l %>% 
+  summarise(lppd = sum(log_mean_likelihood)) %>% 
+  pull(lppd) 
+
+# Next calculate the effective number of parameters pWAIC
+
+v_i <-
+  ll %>% 
+  pivot_longer(everything(),
+               names_to = "i",
+               values_to = "loglikelihood") %>% 
+  group_by(i) %>% 
+  summarise(var_loglikelihood = var(loglikelihood))
+
+pwaic <-
+  v_i %>%
+  summarise(pwaic = sum(var_loglikelihood)) %>% 
+  pull()
+
+pwaic
+
+# Put the two pieces together for the WAIC
+-2 * (lppd - pwaic)
+
+# Calculate WAIC standard error
+tibble(lppd   = pull(log_mu_l, log_mean_likelihood),
+       p_waic = pull(v_i, var_loglikelihood)) %>% 
+  mutate(waic_vec = -2 * (lppd - p_waic)) %>% 
+  summarise(waic_se = sqrt(n_cases * var(waic_vec)))
+```
+
+Or just use the BRMS function!
+
+```{r}
+waic(b7.m)
+
+# Note: elpd_waic is just waic without the -2 multiplier
+
+# For pointwise values
+waic(b7.m)$pointwise %>% 
+  head()
+```
+
+```{r}
+# Adding noise to cars for demonstration
+cars$noise <- rnorm(50, 5, 2)
+
+b7.m2 <- 
+  brm(data = cars, 
+      family = gaussian,
+      dist ~ 1 + speed + noise,
+      prior = c(prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 10), class = b),
+                prior(exponential(1), class = sigma)),
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 7)
+
+# Then we can add the WAIC values to each model object
+b7.m <- add_criterion(b7.m, "waic") 
+b7.m2 <- add_criterion(b7.m2, "waic") 
+
+# To retrieve:
+b7.m2$criteria$waic
+
+# Now you can compare
+w <- loo_compare(b7.m, b7.m2, criterion = "waic")
+print(w, simplify = F)
+
+# Can do the same with LOO score instead of waic
+b7.m <- add_criterion(b7.m, "loo") 
+b7.m2 <- add_criterion(b7.m2, "loo") 
+
+loo_compare(b7.m, b7.m2, criterion = "loo") %>% 
+  print(simplify = F)
+```
+
+To compare two models, look at the elpd_diff value and the standard error of the difference (se_diff). Consider (e.g.) 2.6 * se_diff for a 99% interval for the difference to decide whether the difference is meaningful. 
+
+CV, PSIS and WAIC perform similarly with ordinary linear models. CV and PSIS have higher variance as estimators of KL divergence, while WAIC has greater bias. A nice feature of PSIS is that it warns user when its results are unreliable. 
+
+General tips:
+* Use regularizing priors. They reduce fit to sample but generally improve predictions.
+* Use CV/PSIS/WAIC to get a guess of predictive accuracy. 
+* Don't just toss out models with bad CV/PSIS/WAIC scores. Information about relative model accuracy can be useful (e.g. about how confident we should be in our model). Also, if we care about causal inference, maximizing estimates of predictive accuracy won't be a good guide to getting at causation (e.g. highly confounded models can make good predictions). 
+
+## Comparing Inferences
+
+## Model Averaging/Stacking
+
+# Examples
+
+## Regression
+
+### One Sample Known Variance
+
+```{r}
+# Create data
+df = data.frame(
+	iq = round(rnorm(100,108,15))
+)
+
+# Initial EDA
+df %>%
+  ggplot() +
+  geom_histogram(aes(iq))
+
+df %>%
+  summarize(mean = mean(iq),
+            sd = sd(iq),
+            max = max(iq),
+            min = min(iq)
+  )
+
+# Create Model
+one_sample_known_sd <- '
+data{
+  int n;
+  vector[n] iq;
+}
+parameters{
+  real mu;
+}
+model{
+  mu ~ normal(100, 30); // weakly informed prior
+  iq ~ normal(mu, 15); // Assuming known variance of 15
+}
+'
+
+# Check the prior
+prior <- tibble(
+  mu = rnorm(1e4, 100, 30),
+  iq = rnorm(1e4, mu, 15)
+) 
+
+prior %>%
+  ggplot(aes(iq)) +
+  geom_histogram()
+
+prior %>% 
+  mean_hdi(.width=.95)
+
+# This allows IQs ranging from 34 to 163
+# It would be reasonable to tighten the prior, but we'll leave it for now
+
+# Put data into Stan format
+stan_data <- compose_data(df)
+
+model1 <- stan(model_code = one_sample_known_sd,
+              data = stan_data)
+
+# Model diagnostics
+# launch_shinystan(model1)
+
+# Evaluate model
+print(model1)
+
+post <- model1 %>%
+  spread_draws(mu)
+
+post %>%
+  ggplot() +
+  stat_halfeye(aes(mu),
+               .width=c(.5, .95))
+
+# mcmc_hist_by_chain(model, pars='mu')
+# mcmc_violin(model, pars='mu')
+
+post %>%
+  mean_hdi(.width = .95)
+# Reasonable values go from 105 to 111, 108 expected value
+
+# Probability that mu > 107
+sum(post$mu > 107) / nrow(post) # 67%
+
+```
+
+### One Sample Unknown Variance
+
+```{r}
+# Create Model
+one_sample_unknown_sd <- '
+data{
+  int n;
+  vector[n] iq;
+}
+parameters{
+  real mu;
+  real<lower=0> sigma;
+}
+model{
+  sigma ~ normal(0, 30);
+  mu ~ normal(100, 30); // weakly informed prior
+  iq ~ normal(mu, 15); // Assuming known variance of 15
+}
+'
+
+# Check the prior
+prior <- tibble(
+  mu = rnorm(1e4, 100, 30),
+  sd = dweibull(1e4, 2, 1),
+  iq = rnorm(1e4, mu, sd)
+) 
+
+curve(
+  expr = dweibull(x, 2, 1),
+  0,
+  3
+)
+
+prior %>%
+  ggplot(aes(iq)) +
+  geom_histogram()
+
+prior %>% 
+  mean_hdi(.width=.95)
+
+# This allows IQs ranging from 43 to 158
+
+# Put data into Stan format
+stan_data <- compose_data(df)
+
+model2 <- stan(model_code = one_sample_unknown_sd,
+              data = stan_data)
+
+# Model diagnostics
+# launch_shinystan(model2)
+
+# Evaluate model
+print(model2)
+
+post <- model2 %>%
+  spread_draws(mu, sigma)
+
+post %>%
+  ggplot() +
+  stat_halfeye(aes(mu),
+               .width=c(.5, .95))
+
+post %>%
+  ggplot() +
+  stat_halfeye(aes(sigma),
+               .width=c(.5, .95))
+
+# mcmc_hist_by_chain(model, pars='mu')
+# mcmc_violin(model, pars='mu')
+
+post %>%
+  mean_hdi(.width = .95)
+# Reasonable values go from 105 to 111, 108 expected value
+
+# Probability that mu > 107
+sum(post$mu > 107) / nrow(post) # 67%
+sum(post$sigma <= 15) / nrow(post)
+```
+
+### Two Samples Different Variances
+
+```{r}
+df = data.frame(
+	iq = round(c(
+		 rnorm(100,104,15), 
+		 rnorm(100,110,10)
+	)), 
+	group = rep(c('ns','bc'),each=100)
+)
+
+df %>%
+  group_by(group) %>%
+  summarize(mean= mean(iq),
+            sd = sd(iq))
+
+df %>%
+  ggplot() +
+  geom_histogram(aes(iq)) +
+  facet_wrap(~group, ncol=1)
+
+two_sample <- '
+data{
+  int n1;
+  vector[n1] y1;
+  int n2;
+  vector[n2] y2;
+}
+parameters{
+  real y1_mean;
+  real<lower=0> y1_sd;
+  real y2_mean;
+  real<lower=0> y2_sd;
+}
+model{
+  y1_mean ~ normal(100, 30);
+  y1_sd ~ weibull(2, 20);
+  y1 ~ normal(y1_mean, y1_sd);
+  y2_mean ~ normal(100, 30);
+  y2_sd ~ weibull(2, 20);
+  y2 ~ normal(y2_mean, y2_sd);
+}
+generated quantities{
+  real diff_means = y1_mean - y2_mean;
+}
+'
+
+stan_data <- list(
+  n1 = nrow(filter(df, group=='bc')),
+  n2 = nrow(filter(df, group!='bc')),
+  y1 = df[df$group=='bc', 'iq'],
+  y2 = df[df$group!='bc', 'iq']
+)
+
+model3 <- stan(model_code = two_sample,
+              data = stan_data)
+
+print(
+  model3,
+  digits = 2,
+  probs = c(.025, .975)
+)
+
+post <- model3 %>%
+  gather_draws(y1_mean, y2_mean, y1_sd, y2_sd, diff_means)
+
+post %>%
+  mean_hdi()
+
+post %>%
+  filter(.variable %in% c('y1_mean', 'y2_mean')) %>%
+  ggplot() +
+  geom_histogram(aes(.value)) +
+  facet_wrap(~.variable, ncol=1)
+
+post %>%
+  filter(.variable %in% c('y1_sd', 'y2_sd')) %>%
+  ggplot() +
+  geom_histogram(aes(.value)) +
+  facet_wrap(~.variable, ncol=1)
+
+post %>%
+  filter(.variable %in% c('diff_means')) %>%
+  ggplot() +
+  geom_histogram(aes(.value))
+```
+
+### Difference Coded Model
+
+```{r}
+options(contrasts = c('contr.sum', 'contr.poly'))
+mm <- model.matrix(
+  object = ~ group,
+  data = df
+)
+
+diff_coded_model <- '
+data{
+	int N ;
+	vector[N] y ;
+	vector[N] x ;
+}
+parameters{
+	real intercept ;
+	real diff ;
+	real<lower=0> ysd ;
+}
+model{
+	intercept ~ normal(0,1) ;
+	diff ~ normal(0,1) ;
+	ysd ~ weibull(2,1) ;
+	y ~ normal( intercept+x*diff/2 ,ysd) ;
+}
+'
+
+model3 <- stan(
+  program = diff_coded_model,
+  data = list(
+    N = nrow(df),
+    y = df$iq,
+    x = mm[,2]
+  )
+)
+```
+
+Model specification using matrices
+
+```{r}
+matrix_form_model <- 'data{
+	int nY ;
+	int nX ;
+	vector[nY] y ;
+	matrix[nY,nX] x ;
+}
+transformed data{
+	vector[nY] y_scaled ;
+	y_scaled = (y-mean(y))/sd(y) ;
+}
+parameters{
+	vector[nX] coef ;
+	#1st element in coef is the intercept
+	#2nd element in coef is the diff
+	real<lower=0> ysd ;
+}
+model{
+	coef ~ normal(0,1) ;
+	ysd ~ weibull(2,1) ;
+	y_scaled ~ normal( x*coef , ysd ) ;
+	#step-by-step conversion back to the intercept-diff representation
+	#y ~ normal( x[,1]*coef[1] + x[,2]*coef[2] , ysd)
+	#y ~ normal( coef[1] + x[,2]*coef[2] , ysd)
+	#y ~ normal( intercept + x[,2]*diff , ysd)
+}
+generated quantities{
+	real ysd_unscaled ;
+	vector[nX] coef_unscaled ;
+	ysd_unscaled = ysd*sd(y) ;
+	coef_unscaled[1] = coef[1]*sd(y) + mean(y) ;
+	for(i in 2:nX){
+		coef_unscaled[i] = coef[i]*sd(y) ;
+	}
+}'
+```
+
+### 2x2 Regression
+
+```{r}
+'data{
+	int nY ;
+	int nX ;
+	vector[nY] y ;
+	matrix[nY,nX] x ;
+}
+transformed data{
+	vector[nY] y_scaled ;
+	y_scaled = (y-mean(y))/sd(y) ;
+}
+parameters{
+	vector[nX] coef ;
+	real<lower=0> ysd ;
+}
+model{
+	coef ~ normal(0,1) ;
+	ysd ~ weibull(2,1) ;
+	y_scaled ~ normal( x*coef , ysd ) ;
+}
+generated quantities{
+	vector[nY] y2 ;
+	real ysd_unscaled ;
+	vector[nX] coef_unscaled ;
+	vector[nX] effect_sizes ;
+	ysd_unscaled = ysd*sd(y) ;
+	coef_unscaled[1] = coef[1]*sd(y) + mean(y) ;
+	for(i in 2:nX){
+		coef_unscaled[i] = coef[i]*sd(y) ;
+	}
+	effect_sizes  = coef_unscaled/ysd_unscaled ;
+	for(i in 1:nY){
+		y2[i] = normal_rng( (x*coef_unscaled)[i] , ysd_unscaled ) ;
+	}
+}'
+```
+
+### Binomial
+
+```{r}
+# Simple binomial dataset
+df <- read_csv("C:/Users/ecrro/Dropbox/data_science/r_notes/binomial1.csv")
+
+df$sick01 <- as.numeric(df$sick == 'yes')
+df$group <- as.factor(df$group)
+
+df %>%
+  group_by(group) %>%
+  summarize(mean(sick01))
+
+stan_model <- '
+data { 
+  int nY;
+  int nX;
+  int y[nY];
+  matrix[nY, nX] x;
+}
+parameters {
+  vector[nX] coef;
+}
+model {
+  coef ~ normal(0, 10);
+  y ~ bernoulli_logit( x * coef);
+}
+generated quantities{
+  int y2[nY];
+  for (i in 1:nY){
+    y2[i] = bernoulli_logit_rng((x*coef)[i]);
+  }
+}
+'
+# The generate quantities produces a sample dataset 
+# Check if this looks anything like your original data                         
+```
+
+## Beta-binomial Model
+
+For handling over-dispered counts.
+
+```{r}
+library(rethinking)
+data(UCBadmit)
+
+df <- UCBadmit
+df$gid <- ifelse(df$applicant.gender == 'male', 1L, 2L)
+dat <- list(A=df$admit,
+            N=df$applications,
+            gid=df$gid)
+
+m12.1 <- ulam(
+  alist(
+    A ~ dbetabinom(N, pbar, theta),
+    logit(pbar) <- a[gid],
+    a[gid] ~ dnorm(0, 1.5),
+    transpars> theta <<- phi + 2.0,
+    phi ~ dexp(1)
+  ), data=dat, chains=4
+)
+
+# Stan Code
+'
+data{
+    int N[12];
+    int A[12];
+    int gid[12];
+}
+parameters{
+    vector[2] a;
+    real<lower=0> phi;
+}
+transformed parameters{
+    real theta;
+    theta = phi + 2; // need to shift the exponential dist to have lb of 2
+}
+model{
+    vector[12] pbar;
+    phi ~ exponential( 1 );
+    a ~ normal( 0 , 1.5 );
+    for ( i in 1:12 ) {
+        pbar[i] = a[gid[i]];
+        pbar[i] = inv_logit(pbar[i]);
+    }
+    A ~ beta_binomial( N , pbar*theta , (1-pbar)*theta );
+}
+'
+```
+
+## Cholesky Factor
+
+Recipe for taking standard normal random variables as well as a correlation + standard deviations and outputting two random variables with a multivariate normal distribution with the specified correlation and standard deviations. 
+
+```{r}
+# Example Data
+n <- 1e4
+sigma1 <- 2
+sigma2 <- .5
+rho <- .6
+
+# Two independent standard normal rvs
+z1 <- rnorm(n, 0, 1)
+z2 <- rnorm(n, 0, 1)
+
+a1 <- z1 * sigma1
+a2 <- (rho * z1 + sqrt(1 - rho^2) * z2) * sigma2
+
+print(cor(z1, z2))
+print(cor(a1, a2))
+print(sd(a1))
+print(sd(a2))
+```
+

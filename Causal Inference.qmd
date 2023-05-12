@@ -1,0 +1,25 @@
+---
+title: "Causal Inference"
+format: html
+editor: visual
+---
+
+## DAGS
+
+Useful R package:
+https://cran.r-project.org/web/packages/ggdag/vignettes/intro-to-ggdag.html
+
+Types of relationships:
+
+* Pipe: A -> C -> B
+* Fork: A <- C -> B
+* Collider: A -> C <- B
+
+Conditioning on C for the pipe/fork will remove the causal path from A to B
+Condition on C for the collider will open a (non-causal) path from A to B
+
+Montgomery et. al 2018, "How Conditioning on Postreatment Variables can Ruin Your Experiment"
+
+Key point: sometimes adding control variables will create confounding, particularly when conditioning on a collider. Need to guide your analysis with something like a DAG.
+
+Cinelli, Forney, Pearl, 2021, 'A Crash Course in Good and Bad Controls'

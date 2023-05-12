@@ -1,0 +1,2059 @@
+---
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning=FALSE,
+                      error=TRUE,
+                      message=FALSE,
+                      eval=FALSE)
+
+# Example dataset
+data(iris)
+```
+
+# R Fundamentals
+
+## Basic Tools
+
+### Base R
+
+Avoid df prefixing:
+
+```{r}
+# one option
+mean(iris$Sepal.Length)
+
+# is equivalent to
+with(iris, mean(Sepal.Length))
+```
+
+Indexing operations:
+
+```{r, eval=F}
+# 'which' function returns the index for a condition
+which(iris$Sepal.Length == max(iris$Sepal.Length))
+
+# Can also call which.max or which.min
+which.max(iris$Sepal.Length)
+
+# Can use to filter a dataset
+iris[which.max(iris$Sepal.Length), ]
+
+# Other ways of checking conditions and returning booleans
+any(iris$Sepal.Length > 5)
+
+all(iris$Sepal.Length > 5)
+```
+
+Split a vector into a list of vectors based on some splitting variable:
+
+```{r}
+# returns a list of data frames split on Species
+species = split(iris$Sepal.Length, iris$Species)
+
+# Collapses the list of vectors back into a single vector
+unlist(species)
+```
+
+Rounding numbers:
+
+```{r}
+a <- c(2.1241, 3.86234, 4.5, -4.5, 10000.1001)
+round(a, 3)           # Rounds to 3 decimal places
+signif(a, 3)          # Rounds to 3 significant digits
+ceiling(a)            # Rounds up to the nearest integer
+floor(a)              # Rounds down to the nearest integer
+trunc(a)              # Rounds to the nearest integer, toward 0
+```
+
+Summary functions across rows/columns:
+
+```{r}
+# Sum across rows
+colSums(iris[,1:4])
+
+# If there were NA values, this is useful
+colSums(is.na(iris[,1:4]))
+
+# Other similar row and column calculations
+rowSums(iris[,1:4])
+rowMeans(iris[,1:4])
+colMeans(iris[,1:4])
+```
+
+Cumulative Functions:
+
+```{r}
+# Cumulative Functions
+library(fpp2)
+
+cumsum(a10[7:18])  # Total sales
+cummax(a10[7:18])  # Highest monthly sales
+cummin(a10[7:18])  # Lowest monthly sales
+
+# also cummean(), cumprod()
+
+plot(1:12, cumsum(a10[7:18]),
+     xlab = "Month",
+     ylab = "Total sales",
+     type = "b")
+```
+
+Lead/Lag
+
+```{r}
+(x <- 1:10)
+(lead(x))
+(lag(x))
+
+# Can use these functions for running differences
+(x - lag(x))
+```
+
+Ranking Functions
+
+```{r}
+y <- c(1, 2, 2, NA, 3, 4, 6, 12)
+
+# Rank ascending
+(min_rank(y))
+# Rank descending
+(min_rank(desc(y)))
+
+# Other rank functions
+row_number(y)
+#> [1]  1  2  3 NA  4  5
+dense_rank(y)
+#> [1]  1  2  2 NA  3  4
+percent_rank(y)
+#> [1] 0.00 0.25 0.25   NA 0.75 1.00
+cume_dist(y)
+#> [1] 0.2 0.6 0.6  NA 0.8 1.0
+```
+
+Scientific Notation:
+
+```{r}
+# Turn off scientific notation
+small_number = 3.1 * 10^-7
+format(small_number, scientific=FALSE) # Gives a character
+
+# Or you can change the options setting
+options(scipen = 1000)
+small_number
+
+# Revert
+options(scipen = 0)
+small_number
+```
+
+Factor manipulation:
+
+```{r}
+smoke <- c("Never", "Never", "Heavy", "Never", "Occasionally",
+           "Never", "Never", "Regularly", "Regularly", "No")
+
+table(smoke)
+
+# In this example, 'no' is an unacceptable response
+```
+
+```{r}
+smoke2 <- factor(smoke, levels = c("Never", "Occasionally",
+                                   "Regularly", "Heavy"),
+                        ordered = TRUE)
+
+# Check the results:
+smoke2
+levels(smoke2)
+table(smoke2)
+
+# 'No' is now an NA value as it is not a valid factor level
+```
+
+```{r}
+# You can add the NA value as another level
+smoke2 <- addNA(smoke2)
+
+levels(smoke2)
+
+# Can change the label of a factor level
+levels(smoke2)[5] <- 'Unknown'
+levels(smoke2)
+
+# Adding an unused level
+smoke2 <- factor(smoke, levels = c("Never", "Occasionally",
+                                   "Regularly", "Heavy",
+                                   "Constantly"),
+                        ordered = TRUE)
+levels(smoke2)
+
+# Drop the unused level
+smoke2 <- droplevels(smoke2)
+levels(smoke2)
+```
+
+```{r}
+# Combining Levels
+levels(smoke2)[1:3] <- "Yes"
+
+# Check the results:
+levels(smoke2)
+```
+
+## Advanced Data Manipulation
+
+Different way of aggregating by group. Compare to dplyr version below.
+
+```{r}
+aggregate(Sepal.Length ~ Species, data=iris, FUN=mean)
+```
+
+### dplyr
+
+```{r}
+# Recoding factor levels with dplyr
+# library(dplyr)
+# smoke3 = data.table(smoke2)
+# smoke3 %>% mutate(smoke2 = recode(smoke2,
+#                   "Never" = "Nvr",
+#                   "Occasionally" = "Occ",
+#                   "Regularly" = "Reg",
+#                   "Heavy" = "Hvy"))
+```
+
+```{r}
+# Using across() to calculate summary of all variables 
+# with a certain property
+
+iris %>% group_by(Species) %>%
+       summarise(across(
+         where(is.numeric),
+         mean, na.rm = TRUE))
+```
+
+```{r}
+# Distinct values
+iris %>% summarise(n_species =
+             n_distinct(Species))
+```
+
+```{r}
+# Filtering rows via row index
+iris %>% slice(1:5)
+```
+
+```{r}
+# Sample random rows
+iris %>% sample_n(10)
+```
+
+```{r}
+# Select all numeric columns
+iris %>% select_if(is.numeric)
+
+# Or remove columns with NA values
+iris %>% select_if(~all(!is.na(.)))
+```
+
+```{r}
+# Helper functions used with select
+iris %>%
+  select(starts_with('s'))
+
+iris %>%
+  select(ends_with('s'))
+
+iris %>%
+  select(contains('pec'))
+```
+
+## Linear Algebra
+
+### Vectors
+
+Basic Operations
+
+```{r}
+# Create a vector
+v <- c(2, 3, 4)
+
+# Transpose
+t(v)
+
+# Scaler multiplication
+5 * v
+
+# Adding vectors
+w <- c(6, 3, 7)
+
+v + w
+
+```
+
+Dot Products
+
+```{r}
+# Elementwise multiplication
+v*w
+
+# For dot product, need to sum
+sum(v * w)
+
+# Vector length
+sqrt(sum(v * v))
+
+# Creating vector of unit length
+v_unit <- v / sqrt(sum(v * v))
+
+sum(v_unit * v_unit)
+
+# Test for orthogonality (want 0 dot product)
+
+a <- c(0, 1)
+b <- c(1, 0)
+
+sum(a * b)
+```
+
+### Matrices
+
+```{r}
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3), ncol=3)
+A
+
+# default is to read in data column-by-column, otherwise use this:
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3), ncol=3, byrow=TRUE)
+A
+```
+
+```{r}
+# Scalar multiplication
+2 * A
+
+# Transposition
+t(A)
+
+# Sum of Matrices
+B <- matrix(c(1, 0, 1, 2, 3, 1, 2, 0, 4), ncol=3)
+
+A + B
+```
+
+```{r}
+# Vector multiplication
+A %*% v
+
+# Don't use 
+A * v 
+```
+
+```{r}
+# Matrix multiplication
+
+# Requires number of columns in first matrix match number of rows in second
+# (m x n) with (n x p)
+
+A = matrix(c(1, 4, 6, 3, 7, 2), ncol=2)
+
+B = matrix(c(4, 3), ncol=1)
+
+# (3x2) %*% (2x1) yields (3x1)
+A %*% B
+```
+
+```{r}
+# 0 and 1 matrix
+matrix(0, ncol=5, nrow=5)
+matrix(1, ncol=7, nrow=8)
+
+# Diagonal matrix
+diag(c(4, 5, 2, 6, 7))
+
+# Identity in R^5
+diag(1, 5)
+
+# Using diag on a matrix returns the diagonal entries
+diag(A)
+```
+
+```{r}
+# Find the inverse of a matrix (must be square)
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3, 2, 11, 6, 7, 8, 0, 5), ncol=4)
+
+A_inv <- solve(A)
+
+# Double check
+round(A_inv %*% A, 10) 
+```
+
+### Solving Systems
+
+```{r}
+# Solving a linear system of equations
+v <- c(6, 4, 2, 1)
+
+# To solve Ax = b for x...
+A_inv <- solve(A)
+
+A_inv %*% v
+
+# Check
+A %*% (A_inv %*% v)
+```
+
+```{r}
+# Using pracma to find rref
+library(pracma)
+
+C = matrix(c(1, 4, 6, 3, 7, 2), ncol=2)
+
+rref(C)
+```
+
+### Determinants
+
+```{r}
+# Determinants
+det(A)
+
+# If a multiple of one row in A is added to another to produce B,
+# then det(A) = det(b)
+
+A <- matrix(c(1, 2, 4, 0, 2, 3, 1, 4, 5), nrow=3)
+E <- matrix(c(1, 0, 0, 0, 1, -2, 0, 0, 1), nrow=3)
+
+det(A)
+det(E%*%A)
+```
+
+### Eigenvalues
+
+```{r}
+A <- matrix(c(1, 2, 4, 0, 2, 3, 1, 4, 5), nrow=3)
+A
+
+eigen(A)
+```
+
+
+## Miscellaneous
+
+### beepr
+
+A function that beeps when your code is done
+
+```{r}
+library(beepr)
+```
+
+# Visualization
+
+## ggplot2
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+Patchwork is useful for combing multiple plots:
+
+```{r}
+plot1 <- ggplot(iris, aes(Species, Sepal.Length, fill = Species)) +
+            geom_violin() +
+            theme(legend.position = "none")
+plot2 <- ggplot(iris, aes(Species, Petal.Length, fill = Species)) +
+            geom_violin() +
+            theme(legend.position = "none")
+
+plot3 <- ggplot(iris, aes(Sepal.Length, fill=Species)) +
+            geom_density(alpha = 0.5) +
+            theme(legend.position = "none")
+plot4 <- ggplot(iris, aes(Petal.Length, fill=Species)) +
+            geom_density(alpha = 0.5)  +
+            theme(legend.position = "none")
+
+library(patchwork)
+(plot1 | plot2) / (plot3 | plot4)
+```
+
+Some random chart types I'm less familiar with:
+
+```{r}
+library(fpp2)
+elecdaily2 <- as.data.frame(elecdaily)
+elecdaily2$day <- 1:nrow(elecdaily2)
+      
+ggplot(elecdaily2, aes(Temperature, Demand, colour = day)) +
+      geom_point() +
+      geom_path()
+```
+
+```{r}
+library(forecast)
+library(nlme)
+library(fpp2)
+ggseasonplot(a10)
+```
+
+```{r}
+library(GGally)
+ggpairs(airquality)
+```
+
+```{r}
+ggpairs(msleep[, which(sapply(msleep, class) == "numeric")])
+```
+
+```{r}
+ggcorr(msleep[, c("sleep_total", "sleep_rem", "sleep_cycle", "awake",
+                   "brainwt", "bodywt")])
+```
+
+### Plotting Functions
+
+```{r}
+ggplot(mtcars, aes(x = mpg)) + 
+  geom_histogram(aes(y = ..density..), fill = "red") + 
+  stat_function(
+    fun = dnorm, 
+    args = with(mtcars, c(mean = mean(mpg), sd = sd(mpg)))
+  ) + 
+  scale_x_continuous("Miles per gallon") + 
+  labs(title = "Histogram with Normal Curve") 
+
+
+ggplot(mtcars, aes(x = mpg)) + 
+  geom_histogram(fill = "red") + 
+  stat_function(
+    fun = function(x, mean, sd, n){
+      n * dnorm(x = x, mean = mean, sd = sd)
+    }, 
+    args = with(mtcars, c(mean = mean(mpg), sd = sd(mpg), n
+                          = length(mpg)))
+  ) + 
+  scale_x_continuous("Miles per gallon") + 
+  labs(title = "Histogram with Normal Curve")  
+```
+
+
+
+# Exporatory Data Analysis
+
+## Central Tendency
+
+Trimmed and weighted averages:
+
+```{r}
+# Trimmed Mean
+mean(iris$Sepal.Length)
+mean(iris$Sepal.Length, trim=.2)
+
+# Some Data
+df = iris %>%
+  filter(Sepal.Width > 2.8) %>%
+  group_by(Species) %>%
+  summarize(n = n(),
+            avg_slength = mean(Sepal.Length))
+
+# Weighted Mean Calculation
+weighted.mean(df$avg_slength, weights=df$n)
+```
+
+## Dispersion
+
+Some measures of dispersion:
+
+```{r}
+# IQR function
+IQR(iris$Sepal.Length)
+
+# MAD
+mad(iris$Sepal.Length)
+```
+
+# Hypothesis Tests
+
+## Confidence Intervals
+
+Bootstrap CI Algorithm:
+
+1. Define a random sample of size n with replacement from the data (a resample).
+
+2. Record the statistic of interest for the resample.
+
+3. Repeat steps 1-2 many (R) times.
+
+4. For an x% confidence interval, trim [(100-x)/2]% of the R resample results from either end of the distribution.
+
+5. The trim points are the endpoints of an x% bootstrap confidence interval. 
+
+## Classical Tests
+
+### Simple t-test
+
+```{r}
+###########################################
+#### Simple t-test
+###########################################
+
+data(iris)
+
+# Assumes data comes from normal distribution
+# fairly robust to deviations from normality given large samples
+
+# Simple t-test against specified mean
+test_mean = 6
+
+simple_test = t.test(iris$Sepal.Length, mu=test_mean)
+# One Sample t-test
+# data:  iris$Sepal.Length
+# t = -2.3172, df = 149, p-value = 0.02186
+# alternative hypothesis: true mean is not equal to 6
+# 95 percent confidence interval:
+#   5.709732 5.976934
+# sample estimates:
+#   mean of x 
+# 5.843333 
+
+# Manual calculation of confidence interval
+sample_sd = sd(iris$Sepal.Length) # uses (n-1) in denominator by default
+standard_error = sample_sd/sqrt(nrow(iris))
+sample_mean = mean(iris$Sepal.Length)
+
+print(sample_mean - standard_error * qt(.975, 149))
+print(sample_mean + standard_error * qt(.975, 149))
+
+# t-statistic
+t_stat = (sample_mean - test_mean) / standard_error
+print(t_stat)
+
+# p-value calculation
+pt(t_stat, df=149)*2 # multiply by two for two-tailed test
+
+simple_test$statistic
+simple_test$paramter
+simple_test$p.value
+simple_test$conf.int
+simple_test$estimate
+simple_test$stderr
+
+# One-tailed test
+t.test(iris$Sepal.Length, mu=6, alternative='less',
+       conf.level=0.99)
+# One Sample t-test
+# 
+# data:  iris$Sepal.Length
+# t = -2.3172, df = 149, p-value = 0.01093
+# alternative hypothesis: true mean is less than 6
+# 99 percent confidence interval:
+#   -Inf 6.00233
+# sample estimates:
+#   mean of x 
+# 5.843333 
+
+# negative lower CI is due to one-sided test
+```
+ 
+This is also equivalent to a linear model. Easiest to see when the test is that the mean is 0. Essentially the model is estimating the coefficient for the intercept, which will be the mean value, and you get a test based on the standard error and distance from 0. 
+
+```{r}
+t.test(iris$Sepal.Length)
+summary(lm(iris$Sepal.Length ~ 1)) # Same results
+confint(lm(iris$Sepal.Length ~ 1)) # Gives the confint from the t.test
+```
+
+### Wilcoxon Signed Rank Test
+
+```{r}
+#########################################
+#### Wilcoxon Signed Rank Test
+#########################################
+
+# Non-parametric test
+# Does not assume data comes from normal distribution
+# Becomes computationally expensive with large samples
+# (But then approximating with a normal should be pretty good)
+
+wilcox.test(iris$Sepal.Length, mu=6)
+
+# Wilcoxon signed rank test with
+# continuity correction
+# 
+# data:  iris$Sepal.Length
+# V = 3981.5, p-value = 0.01349
+# alternative hypothesis: true location is not equal to 6
+
+# Because there is no parameter estimate there are no CIs
+# Continuity correction can be turned off, default on
+
+# Can compare two samples as well
+
+setosa = iris[iris$Species=='setosa', 'Sepal.Length']
+virginica = iris[iris$Species=='virginica', 'Sepal.Length']
+wilcox.test(setosa, virginica)
+
+# Wilcoxon rank sum test with
+# continuity correction
+# 
+# data:  setosa and virginica
+# W = 38.5, p-value < 2.2e-16
+# alternative hypothesis: true location shift is not equal to 0
+```
+
+Equivalent to a linear model using signed ranks
+
+```{r}
+# 'signed rank' is just a rank function that preserves sign
+signed_rank = function(x) sign(x) * rank(abs(x))
+
+a = wilcox.test(iris$Sepal.Length)
+
+# Equivalent linear model
+b = lm(signed_rank(iris$Sepal.Length) ~ 1)  # See? Same model as above, just on signed ranks
+
+# Bonus: of course also works for one-sample t-test
+c = t.test(signed_rank(iris$Sepal.Length))
+```
+
+### Two-Sample t-test
+
+```{r}
+##########################################
+#### Two-Sample t-test
+##########################################
+
+# Test whether two samples come from distribution with same mean
+# Key distinction is whether you assume groups have same sd
+# More conservative approach is to not assume this
+
+t.test(setosa, virginica)
+# Default is Welch test which does not assume equal variance
+
+# Welch Two Sample t-test
+# 
+# data:  setosa and virginica
+# t = -15.386, df = 76.516, p-value < 2.2e-16
+# alternative hypothesis: true difference in means is not equal to 0
+# 95 percent confidence interval:
+#   -1.78676 -1.37724
+# sample estimates:
+#   mean of x mean of y 
+# 5.006     6.588 
+
+# You get the fractional df because this is Welch's test
+# Alternatively, assuming the variance is equal:
+
+t.test(setosa, virginica, var.equal=TRUE)
+# Two Sample t-test
+# 
+# data:  setosa and virginica
+# t = -15.386, df = 98, p-value < 2.2e-16
+# alternative hypothesis: true difference in means is not equal to 0
+# 95 percent confidence interval:
+#   -1.786042 -1.377958
+# sample estimates:
+#   mean of x mean of y 
+# 5.006     6.588
+```
+
+As linear model:
+
+```{r}
+df <- iris %>% 
+  dplyr::filter(Species %in% c('setosa', 'virginica')) %>%
+  mutate(setosa = ifelse(Species=='setosa', 1, 0))
+
+summary(lm(Sepal.Width ~ 1 + setosa, data=df))
+t.test(df[df$Species=='setosa', 'Sepal.Width'], 
+       df[df$Species=='virginica', 'Sepal.Width'], 
+       var.equal=TRUE)
+```
+
+Mann-Whitney U (also known as Wilcoxon rank-sum test for two independent groups; no signed rank this time) is the same model to a very close approximation, just on the ranks of x and y instead of the actual values.
+
+```{r}
+wilcox.test(
+  df[df$Species=='setosa', 'Sepal.Width'], 
+  df[df$Species=='virginica', 'Sepal.Width']
+  )
+
+summary(lm(rank(Sepal.Width) ~ 1 + setosa, data=df))
+```
+
+Welch's t-test is identical to the (Student’s) independent t-test above except that Student’s assumes identical variances and Welch’s t-test does not. So the linear model is the same but we model one variance per group.
+
+### Comparing Variance
+
+```{r}
+# Comparing variances 
+var.test(iris[iris$Species != 'versicolor',]$Sepal.Length ~ iris[iris$Species != 'versicolor',]$Species)
+# Null Hypothesis is that the ratio of the variances is equal to the ratio input
+# The default is 1
+
+# Also assumes normality, as is not robust to deviations
+# Assumes groups are independent (don't use with paired data)
+
+# F test to compare two variances
+# 
+# data:  iris[iris$Species != "versicolor", ]$Sepal.Length by iris[iris$Species != "versicolor", ]$Species
+# F = 0.30729, num df = 49, denom df = 49, p-value
+# = 6.366e-05
+# alternative hypothesis: true ratio of variances is not equal to 1
+# 95 percent confidence interval:
+#   0.1743776 0.5414962
+# sample estimates:
+#   ratio of variances 
+# 0.3072862 
+```
+
+### Paired t-test
+
+```{r}
+############################################
+#### Paired t-test
+############################################
+
+# Use when you have two measurements on same experimental unit
+# Assumed that the distributions are independent of the level
+
+# Use the same t.test function but set paired=TRUE
+t.test(iris$Sepal.Length, iris$Sepal.Width, paired=TRUE)
+# Paired t-test
+# 
+# data:  iris$Sepal.Length and iris$Sepal.Width
+# t = 34.815, df = 149, p-value <
+#   2.2e-16
+# alternative hypothesis: true difference in means is not equal to 0
+# 95 percent confidence interval:
+#   2.627874 2.944126
+# sample estimates:
+#   mean of the differences 
+# 2.786 
+
+# Can similarly do a paired Wilcoxon test
+wilcox.test(iris$Sepal.Length, iris$Petal.Length, paired=TRUE)
+# Wilcoxon signed rank test with
+# continuity correction
+# 
+# data:  iris$Sepal.Length and iris$Petal.Length
+# V = 11325, p-value < 2.2e-16
+# alternative hypothesis: true location shift is not equal to 0
+```
+
+Again these are equivalent to linear models. Here you just take the difference between the pairs and do a simple regression on whether the difference is 0.
+
+```{r}
+a = t.test(iris$Sepal.Length, iris$Sepal.Width, paired = TRUE) 
+b = lm(iris$Sepal.Length - iris$Sepal.Width ~ 1) 
+```
+
+The wilcoxon test is just using the signed ranks of the differences.
+
+```{r}
+# Built-in Wilcoxon matched pairs
+a = wilcox.test(iris$Sepal.Length, iris$Sepal.Width, paired = TRUE)
+
+# Equivalent linear model:
+b = lm(signed_rank(iris$Sepal.Length - iris$Sepal.Width) ~ 1)
+
+# Bonus: identical to one-sample t-test on signed ranks
+c = t.test(signed_rank(iris$Sepal.Length - iris$Sepal.Width))
+```
+
+### t-test Example: F v B
+
+Assess effect of caffeine (vs placebo) on metabolism, measured by respiratory exchange rate (RER). Treatment randomized on 18 sbjects, parallel group RCT. 
+* Using log RER for symmetry
+* mu0 = mean log RER for placebo
+* mu1 = mean log RER for caffeine
+* Fold-change effect = exp(mu1 - mu0)
+* estimate = mu1 - mu0
+* H0 = mu0 = mu1
+* H1 = mu0 != mu1
+
+We're told that prior research estimates a sigma of 0.1 for log RER
+
+Determining sample size: 
+
+```{r}
+library(pwr)
+s <- 0.1
+fc <- c(1.1, 1.15, 1.2, 1.25, 1.5)
+n <- integer(length(fc))
+i <- 0
+for (foldchange in fc){
+  i <- i + 1
+  n[i] <- ceiling(pwr.t.test(d=log(foldchange) / s, power=0.9)$n)
+}
+data.frame('Fold Change' = fc, Delta = round(log(fc), 3), 'N per group'=n,
+           check.names=F)
+
+# this is showing you the number of samples need for each group
+# given a 'fold change', the exponentiated difference in means,
+# and showing the delta, which is the absolute difference in means
+```
+
+```{r}
+# Generating data
+tx <- factor (c(rep('placebo', 9), 
+               rep('caffeine', 9)), 
+             c('placebo', 'caffeine'))
+
+
+rer <- c(105, 119, 100, 97, 96, 101, 94, 95, 98,
+         96, 99, 94, 89, 96, 93, 88, 105, 88) / 100
+
+d <- data.frame(subject = 1:18, tx, rer, logrer = log(rer))
+
+hist(d$logrer)
+```
+
+Frequentist test
+
+```{r}
+t.test <- t.test(log(rer) ~ tx, data = d)
+```
+
+* Subjects given caffeine have on average a log RER that is 0.064 lower (.95 CI: [-.13, .002]) than individuals given placebo.
+
+* By exponentiating we get an average of 1.07 [0.878, 1.002]. 
+
+Bayesian alternative:
+
+```{r}
+library(brms)
+pr0 <- set_prior("", class = "Intercept")
+pr1 <- set_prior("normal(0, 0.25)", class="b", coef="txcaffeine")
+pr2 <- set_prior("normal(0,.3912", class="b", coef="txcaffeine", dpar="sigma")
+
+f <- brm(bf(log(rer) ~ tx, sigma ~ tx), data = d, family = student,
+         prior = c(pr0, pr1, pr2), seed = 1202)
+
+f
+```
+
+```{r}
+pp_check(f)
+plot(marginal_effects(f), points=T)
+
+p <- as_tibble(f)
+meanplacebo = p[, "b_Intercept"]
+delta = p[, "b_txcaffeine"]
+sdplacebo = exp(p[, "b_sigma_Intercept"])
+sdratio = exp(p[, "b_sigma_txcaffeine"])
+nu = p[,"nu"]
+
+hist(delta, nclass=50, main='')
+
+# Posterior prob that diff in means < 0 
+mean(delta < 0)
+sum(delta < 0)/nrow(delta)
+```
+
+```{r}
+mean(exp(delta) < 0.95)
+
+# Prob caffeine and placebo have similar response
+sum(exp(delta) > 0.975 & exp(delta) < 1/0.975)/nrow(delta)
+```
+
+
+
+
+## Testing Example: Freq. v Bayesian
+
+```{r}
+y <- c (98 , 105 , 99 , 106 , 102 , 97 , 103 , 132)
+t.test(y, mu=110)
+sd(y)
+```
+
+For the Bayesian, a one-sample test is a linear model containing only the intercept, and the intercept represents the overall unknown mean of y.
+
+```{r}
+library(brms)
+d = data.frame( y )
+priormu = prior ( normal (150 ,50) , class = 'Intercept')
+f = brm ( y ~ 1 , family = gaussian , prior = priormu , data =d , seed =1)
+
+prior_summary(f)
+f
+```
+
+```{r}
+draws = as.data.frame ( f )
+mu = draws $ b_Intercept
+sigma = draws $ sigma
+
+quantile(mu, c(.025, .975))
+
+# Compare with the p-value, this is the prob that the mean is greater than 110
+mean(mu > 110)
+
+plot(f)
+```
+
+Can switch to a robust regression using a t distribution with a gamma prior
+
+```{r}
+g = brm ( y ~ 1 , family = student , prior = priormu , data =d , seed =2)
+
+draws2 = as.data.frame (g)
+mu2 = draws2$b_Intercept
+sigma2 = draws2$sigma
+
+quantile(mu2, c(.025, .975))
+
+# Compare with the p-value, this is the prob that the mean is greater than 110
+mean(mu2 > 110)
+```
+
+This is much less heavily affected by the large outlier
+
+## Testing a Proportion
+
+Bayesian method uses binomial distribution
+
+Useful priors when dealing with probability values: beta distribution
+
+This is particularly helpful with a binomial model like this because it is a conjugate prior and the posterior is very easy to analytically determine. 
+
+The beta distributions looks like:
+
+beta( theta | a, b) = ( theta ^ (a - 1) * (1 - theta) ^ (b - 1) ) / B( a, b )
+
+Where 'B' is the beta function (which can also be expressed as the gamma function). Beta( a, b ) = the integral from 0 to 1, theta ^ (a - 1) * (1 - theta) ^ (b - 1) dtheta. It's just a normalizing constant here. The 'beta()' function in R calls this. 
+
+* A beta distribution with a = b = 1 is uniform. 
+
+It's useful to know some general properties of the beta dist to help with specifying priors:
+
+* The mean mu = a / (a + b) for a > 1 and b > 1
+* The mode omega = (a - 1) / (a + b - 2) for a > 1 and b > 1
+* When a = b, the mean and mode are .5, when a > b the mean/mode are > .5 and when a < b the mean/mode are < .5. 
+* The 'concentration' kappa = a + b. As this gets larger the distribution gets narrower. 
+* Solving for a and b in terms of the mean, mode, and kappa:
+  + a = mu * kappa and b = (1 - mu) * kappa
+  + a = omega * (kappa - 2) + 1 and b = (1 - omega) * (kappa - 2) + 1 for kappa > 2
+  
+Can also specify using the standard deviation - though the sd should be less than .28867 (the sd of the uniform). 
+* a = mu * ( ( (mu * (1 - mu)) / sigma^2 ) - 1 )
+* b = (1 - mu) * ( ( (mu * (1 - mu)) / sigma^2 ) - 1)
+
+The posterior for the binomial model with the beta prior is very simple. If the prior is beta(theta | a, b) and the data have z heads and N trials, then the posterior is beta( theta | z + a, N - z + b).
+
+Example: suppose you want a prior mean of 0.5 and a .05 chance that the probability of a success exceed 0.8. 
+
+```{r}
+# alpha/(alpha + beta) = 0.5 -> alpha = beta
+alphas <- seq(0, 20, length =100000)
+exceedanceProb <- 1 - pbeta(0.8, alphas, alphas)
+alpha <- alphas[which.min(abs(exceedanceProb - 0.05))]
+beta <- alpha
+```
+
+The solution is alpha = beta = 3.26
+
+So suppose this was our prior (beta(3.26, 3.26) and we had 8 successes in 10 trials. Our posterior is then beta(11.26, 5.26). We can then calculate a credible interval and the probability that the true value is within +-.05 of 0.5. 
+
+```{r}
+qbeta(c(0.025, 0.975), 11.26, 5.26) # 95% credible interval
+1- pbeta(.5, 11.26, 5.26) # Probability truth > 0.5
+pbeta(0.55, 11.26, 5.26) - pbeta(0.45, 11.26, 5.26) # prob truth is within 0.05
+```
+
+Power of the test goes up as n goes up and as p departs from p_null.
+
+Bayesian can solve n that achieves a given width for a 0.95 credible interval. 
+
+* Given a flat prior, alpha = beta = 1
+* Posterior for p is beta(s + 1, n - s + 1)
+* compute CI half-widths for varying n for selected values of s
+
+```{r}
+n <- seq(10, 400, by=5)
+k <- c(1/8, 1/4, 1/2, 3/4, 7/8)
+ck <- paste0('s=', c('1/8', '1/4', '1/2', '3/4', '7/8'), ' n')
+r <- list()
+for (i in 1:5) {
+  ciu <- qbeta(0.975, k[i] * n + 1, n- k[i] * n + 1)
+  cil <- qbeta(0.025, k[i] * n + 1, n - k[i] * n + 1)
+  r[[ck[i]]] <- list(x = n, y = (ciu - cil) / 2)
+}
+Hmisc::labcurve(r, xlab = 'n', ylab = ' Precision ' , col =1:5 , pl = TRUE )
+abline ( h = c (0.05 , 0.1 ) , col = gray (0.9 ) )
+```
+
+
+## Correlation Tests
+
+```{r}
+# Standard Pearson Correlation
+
+cor.test(iris$Sepal.Length, iris$Sepal.Width)
+# Pearson's product-moment correlation
+# 
+# data:  iris$Sepal.Length and iris$Sepal.Width
+# t = -1.4403, df = 148, p-value = 0.1519
+# alternative hypothesis: true correlation is not equal to 0
+# 95 percent confidence interval:
+#  -0.27269325  0.04351158
+# sample estimates:
+#        cor 
+# -0.1175698 
+```
+
+A correlation test is equivalent to a linear model with both vectors scaled to have a standard deviation of 1. The linear model below has the same p-value and the slope is equivalent to the correlation coefficient. The assumptions are then the general assumptions for the linear model: independence of data points, normality of residuals, and homoscedasticity.
+
+```{r}
+sl_scaled <- scale(iris$Sepal.Length)
+sw_scaled <- scale(iris$Sepal.Width)
+
+cor_lm <- lm(sl_scaled ~ sw_scaled)
+summary(cor_lm)
+```
+
+```{r}
+# Useful for plotting correlation
+library(corrplot)
+# See documentation - lots of options here
+
+corrplot(cor(iris[,1:4]), method='number')
+```
+
+Next, Spearman's rank correlation, a non-parametric alternative to the Pearson correlation. As with Pearson correlation, this is equivalent to a linear model.
+
+You need two variables that are either ordinal, interval or ratio. Although you would normally hope to use a Pearson correlation on interval or ratio data, the Spearman correlation can be used when the assumptions of the Pearson correlation are markedly violated. However, Spearman's correlation determines the strength and direction of the monotonic relationship between your two variables rather than the strength and direction of the linear relationship between your two variables, which is what Pearson's correlation determines.
+
+```{r}
+# Spearman's Rank Correlation
+# You replace the values with their ranks and calculate the correlation
+
+cor.test(iris$Petal.Width, iris$Petal.Length, method='spearman')
+# Spearman's rank
+# 	correlation rho
+# 
+# data:  iris$Petal.Width and iris$Petal.Length
+# S = 35061, p-value <
+# 2.2e-16
+# alternative hypothesis: true rho is not equal to 0
+# sample estimates:
+#       rho 
+# 0.9376668 
+# 
+# Warning message:
+# In cor.test.default(iris$Petal.Width, iris$Petal.Length, method = "spearman") :
+#   Cannot compute exact p-value with ties
+```
+
+
+```{r}
+# Can also use Kendall's t
+# Based on counting the number of 'concordant' or 'discordant' pairs
+# A pair of coordinates is concordant if the difference in the x-values
+# is the same sign as the difference in the y-values, else discordant
+
+cor.test(iris$Petal.Width, iris$Petal.Length, method='kendall')
+
+# 
+# data:  iris$Petal.Width and iris$Petal.Length
+# z = 13.968, p-value < 2.2e-16
+# alternative hypothesis: true tau is not equal to 0
+# sample estimates:
+#       tau 
+# 0.8068907 
+```
+ 
+## ANOVA
+
+```{r}
+################################################
+#### ANOVA
+################################################
+
+# Calculate total variation within groups and total variation between groups
+# normalize these by dividing by their df 
+# the ratio of the normalized between-group variation over the within group 
+# variation follows an F-distribution with k-1 and N-k df, for k groups and 
+# N observations
+
+### Assumptions
+    # The responses for each factor level have a normal population distribution.
+    # These distributions have the same variance.
+    # The data are independent.
+
+
+anova(lm(iris$Sepal.Length~iris$Species))
+# Analysis of Variance Table
+# 
+# Response: iris$Sepal.Length
+# Df Sum Sq Mean Sq F value    Pr(>F)    
+# iris$Species   2 63.212  31.606  119.26 < 2.2e-16 ***
+# Residuals    147 38.956   0.265                      
+# ---
+#   Signif. codes:  
+#   0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 
+
+# Variation between groups is labelled with the name of the grouping factor (Species)
+# Variation within groups is labeled Residuals
+```
+
+```{r}
+# If the F-test shows there is a difference between the groups, how to tell 
+# where the difference arises?
+
+# Can check a linear model
+summary(lm(iris$Sepal.Length~iris$Species))
+# Call:
+#   lm(formula = iris$Sepal.Length ~ iris$Species)
+# 
+# Residuals:
+#   Min      1Q  Median      3Q     Max 
+# -1.6880 -0.3285 -0.0060  0.3120  1.3120 
+# 
+# Coefficients:
+#   Estimate Std. Error t value Pr(>|t|)
+# (Intercept)              5.0060     0.0728  68.762  < 2e-16
+# iris$Speciesversicolor   0.9300     0.1030   9.033 8.77e-16
+# iris$Speciesvirginica    1.5820     0.1030  15.366  < 2e-16
+# 
+# (Intercept)            ***
+#   iris$Speciesversicolor ***
+#   iris$Speciesvirginica  ***
+#   ---
+#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+# 
+# Residual standard error: 0.5148 on 147 degrees of freedom
+# Multiple R-squared:  0.6187,	Adjusted R-squared:  0.6135 
+# F-statistic: 119.3 on 2 and 147 DF,  p-value: < 2.2e-16
+
+# First group (setosa) counts as the baseline, and the 
+# other two (versicolor, virginica) are given relative to that
+```
+
+```{r}
+# To correct for errors introduced by conducting multiple t-tests,
+# use pairwise.t.test and add the bonferroni correction
+
+pairwise.t.test(iris$Sepal.Length, iris$Species, p.adj='bonferroni',
+                )
+# Pairwise comparisons using t tests with pooled SD 
+# 
+# data:  iris$Sepal.Length and iris$Species 
+# 
+#           setosa  versicolor
+# versicolor 2.6e-15 -         
+# virginica  < 2e-16 8.3e-09   
+# 
+# P value adjustment method: bonferroni 
+
+# Bonferonni adjusts p-values by multiplying them
+# by the total number of tests
+
+# The default method, due to Holm, multiplies the lowest
+# p-value by the number of tests, the next lowest by the 
+# number of tests - 1, and so on
+```
+
+```{r}
+# If you *don't* want to assume equal variance
+oneway.test(iris$Sepal.Length ~ iris$Species)
+# One-way analysis of means (not assuming equal
+#                            variances)
+# 
+# data:  iris$Sepal.Length and iris$Species
+# F = 138.91, num df = 2.000, denom df = 92.211, p-value
+# < 2.2e-16
+
+
+# Alternatively:
+pairwise.t.test(iris$Sepal.Length, iris$Species, p.adj='bonferroni',
+                pool.sd=FALSE)
+
+
+# Bartlett's Test - check whether variable has same variance in all groups
+# like the F-test, nonrobust to departures from normality
+
+bartlett.test(iris$Sepal.Length ~ iris$Species)
+# The low p-value indicates that the variances are probably not equal
+```
+
+Equivalence of ANOVA with linear model:
+
+```{r}
+a = car::Anova(aov(Sepal.Width ~ Species, iris))  # Dedicated ANOVA function
+
+df = iris %>%
+  mutate(setosa = ifelse(Species == 'setosa', 1, 0),
+         virginica = ifelse(Species == 'virginica', 1, 0))
+
+b = lm(Sepal.Width ~ 1 + setosa + virginica, data=df)  
+```
+
+The Kruskal-Wallis test is simply a one-way ANOVA on the rank-transformed y
+
+```{r}
+####################################################
+#### Kruskall-Wallis Test
+####################################################
+
+# Nonparametric counterpart of ANOVA test
+kruskal.test(iris$Sepal.Length ~ iris$Species)
+# Kruskal-Wallis rank sum test
+# 
+# data:  iris$Sepal.Length by iris$Species
+# Kruskal-Wallis chi-squared = 96.937, df = 2,
+# p-value < 2.2e-16
+
+# Less efficient than ANOVA if ANOVA's conditions are satisfied
+```
+
+```{r}
+kruskal.test(Sepal.Width ~ Species, df)  # Built-in
+summary(lm(rank(Sepal.Width) ~ 1 + setosa + virginica, df))  # As linear model
+car::Anova(aov(rank(Sepal.Width) ~ Species, df))
+```
+
+### ANOVA Resampling
+
+ANOVA Resampling procedure:
+
+For k groups with n observations for each group
+
+1. Combine all the data together in a single box.
+2. Shuffle and draw out k resamples of n values each.
+3. Record the means of each group.
+4. Record the variance of the k group's means.
+5. Repeat 2-4 many (e.g. 10,000) times.
+
+What proportion of the time did the resampled variance exceed the observed variance? This is the p-value. 
+
+```{r}
+# Package for permutation ANOVA test
+library(lmPerm)
+summary(aovp(Sepal.Width ~ Species, data=iris))
+# Component 1 :
+#              Df R Sum Sq R Mean Sq Iter  Pr(Prob)    
+# Species       2   11.345    5.6725 5000 < 2.2e-16 ***
+# Residuals   147   16.962    0.1154                   
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# 'Iter' = number of iterations taken in the test
+```
+
+R ANOVA using classical methods:
+
+```{r}
+summary(aov(Sepal.Width ~ Species, data=iris))
+```
+
+This assumes data come from a normal distribution. Based on the F statistic, which is the ratio of variance across group means to the variance due to residual error. Higher the ratio, the greater the statistical significance. 
+
+## Cohen's D
+
+A standardized measure of effect size. This is the mean of the first group divide by the mean of the second, divided by their pooled standard deviation.
+
+```{r}
+# Example for two equally sized groups
+mean1 = 24
+mean2 = 26.5
+sd1 = 2.3
+sd2 = 2.7
+pooled_sd = sqrt((sd1^2 + sd2^2)/2)
+
+cohen = (24-26.5)/pooled_sd
+cohen
+```
+
+
+## Permutation Test
+
+1. Combine the results from the different groups into a single data set.
+2. Shuffle the combined data and then randomly draw (without replacement) a resample of the same size as group A (clearly it will contain some data from the
+other groups).
+3. From the remaining data, randomly draw (without replacement) a resample of
+the same size as group B.
+4. Do the same for groups C, D, and so on. You have now collected one set of resamples that mirror the sizes of the original samples.
+5. Whatever statistic or estimate was calculated for the original samples (e.g., difference
+in group proportions), calculate it now for the resamples, and record; this constitutes one permutation iteration.
+6. Repeat the previous steps R times to yield a permutation distribution of the test
+statistic.
+
+```{r}
+# Define a permutation function
+perm_fun <- function(x, nA, nB){
+  n <- nA + nB
+  idx_b <- sample(1:n, nB)
+  idx_a <- setdiff(1:n, idx_b)
+  mean_diff <- mean(x[idx_b]) - mean(x[idx_a])
+  return(mean_diff)
+}
+```
+
+```{r}
+# Create a distribution
+perm_diffs <- rep(0, 1000)
+ 
+for (i in 1:1000) {
+  perm_diffs[i] = perm_fun(iris[iris$Species != 'versicolor',]$Sepal.Width, 50, 50)
+}
+
+hist(perm_diffs)
+abline(v=mean_b - mean_a)
+```
+
+```{r}
+# Package for permutation/bootstrap tests
+library(MKinfer)
+
+perm.t.test(Sepal.Length ~ Species, 
+            data = subset(iris, Species == 'versicolor' |
+                            Species == 'virginica'))
+
+
+boot.t.test(Sepal.Length ~ Species, 
+            data = subset(iris, Species == 'versicolor' |
+                            Species == 'virginica'))
+```
+
+
+Bootstrap vs. Permutation Tests:
+(From this: https://stats.stackexchange.com/questions/20217/bootstrap-vs-permutation-hypothesis-testing)
+
+Both are popular and useful, but primarily for different uses. The permutation test is best for testing hypotheses and bootstrapping is best for estimating confidence intervals.
+
+Permutation tests test a specific null hypothesis of exchangeability, i.e. that only the random sampling/randomization explains the difference seen. This is the common case for things like t-tests and ANOVA. It can also be expanded to things like time series (null hypothesis that there is no serial correlation) or regression (null hypothesis of no relationship). Permutation tests can be used to create confidence intervals, but it requires many more assumptions, that may or may not be reasonable (so other methods are preferred). The Mann-Whitney/Wilcoxon test is actually a special case of a permutation test, so they are much more popular than some realize.
+
+The bootstrap estimates the variability of the sampling process and works well for estimating confidence intervals. You can do a test of hypothesis this way but it tends to be less powerful than the permutation test for cases that the permutation test assumptions hold.
+
+More from https://www.burns-stat.com/documents/tutorials/the-statistical-bootstrap-and-other-resampling-methods-2/
+
+The idea: Permutation tests are restricted to the case where the null hypothesis really is null — that is, that there is no effect. If changing the order of the data destroys the effect (whatever it is), then a random permutation test can be done. The test checks if the statistic with the actual data is unusual relative to the distribution of the statistic for permuted data.
+
+## Bootstrap 
+
+'Bootstrap sample' = A sample taken with replacement from an observed data set
+
+'Resampling' = The process of taking repeated samples from observed data; includes bootstrap and permutation procedures.
+
+Boostrap Process:
+
+1. Draw a sample value, record it, replace it.
+2. Repeat n times.
+3. Record the mean of the n resampled values.
+4. Repeat steps 1-3 R times.
+5. Use the R results to:
+* Calculate the standard deviation.
+* Produce a histogram or boxplot.
+* Find a confidence interval. 
+
+Can be used with multivariate data where rows are sampled as units. For exmaple, train a model on bootstrapped data to estimate variance of model parameters. 
+
+```{r}
+library(boot)
+
+stat_fun <- function(x, idx) median(x[idx])
+boot_obj <- boot(iris$Sepal.Length, R=1000, statistic=stat_fun)
+
+boot_obj
+```
+
+```{r}
+# Confidence Interval
+boot_ci <- boot.ci(boot_obj, conf=0.9, type='basic')
+boot_ci
+```
+
+A different package
+
+```{r}
+library(infer)
+
+boot <- iris %>%
+  specify(response=Sepal.Width) %>%
+  generate(reps=1000, type='bootstrap') %>%
+  calculate(stat='median')
+
+boot %>%
+  summarize(lower_bound = quantile(stat, 0.025),
+            upper_bound = quantile(stat, 0.975))
+```
+
+```{r}
+max_min_avg <- function(x)
+{
+      return((max(x)+min(x))/2)
+}
+
+# Set the parameters for the normal distribution:
+mu <- 0
+sigma <- 1
+
+# We will generate 10,000 observations of the estimators:
+B <- 1e4
+res <- data.frame(x_mean = vector("numeric", B),
+                  x_median = vector("numeric", B),
+                  x_mma = vector("numeric", B))
+
+# Start progress bar:
+pbar <- txtProgressBar(min = 0, max = B, style = 3)
+
+for(i in seq_along(res$x_mean))
+{
+      x <- rnorm(25, mu, sigma)
+      res$x_mean[i] <- mean(x)
+      res$x_median[i] <- median(x)
+      res$x_mma[i] <- max_min_avg(x)
+      
+      # Update progress bar
+      setTxtProgressBar(pbar, i)
+}
+close(pbar)
+
+# Compare the estimators:
+colMeans(res-mu) # Bias
+apply(res, 2, var) # Variances
+
+# Compute estimates of the bias of the sample mean for each
+# iteration:
+res$iterations <- 1:B
+res$x_mean_bias <- cumsum(res$x_mean)/1:B - mu
+
+# Plot the results:
+library(ggplot2)
+ggplot(res, aes(iterations, x_mean_bias)) +
+      geom_line() +
+      xlab("Number of iterations") +
+      ylab("Estimated bias")
+
+# Cut the x-axis to better see the oscillations for smaller
+# numbers of iterations:
+ggplot(res, aes(iterations, x_mean_bias)) +
+      geom_line() +
+      xlab("Number of iterations") +
+      ylab("Estimated bias") +
+      xlim(0, 1000)
+```
+
+```{r}
+library(ggplot2)
+data(msleep)
+# Bootstrap CIs for pearson correlation
+# Extract the data that we are interested in:
+mydata <- na.omit(msleep[,c("sleep_total", "brainwt")])
+
+# Resampling using a for loop:
+B <- 999 # Number of bootstrap samples
+statistic <- vector("numeric", B)
+for(i in 1:B)
+{
+      # Draw row numbers for the bootstrap sample:
+      row_numbers <- sample(1:nrow(mydata), nrow(mydata),
+                            replace = TRUE)
+      
+      # Obtain the bootstrap sample:
+      sample <- mydata[row_numbers,]
+      
+      # Compute the statistic for the bootstrap sample:
+      statistic[i] <- cor(sample[, 1], sample[, 2])
+}
+
+# Plot the bootstrap distribution of the statistic:
+ggplot(data.frame(statistic), aes(statistic)) +
+         geom_histogram(colour = "black")
+
+```
+
+```{r}
+library(boot)
+# Same thing with the boot package 
+cor_boot <- function(data, row_numbers, method = "pearson")
+{ 
+    # Obtain the bootstrap sample:
+    sample <- data[row_numbers,]
+    
+    # Compute and return the statistic for the bootstrap sample:
+    return(cor(sample[, 1], sample[, 2], method = method))
+}
+
+boot_res <- boot(na.omit(msleep[,c("sleep_total", "brainwt")]),
+                 cor_boot,
+                 999)
+
+plot(boot_res)
+boot_res
+cor(mydata[, 1], mydata[, 2])
+```
+
+```{r}
+# To get bootstrap confidence intervals
+boot.ci(boot_res)
+```
+
+
+## Power Analysis
+
+Generally, the goal is either to calculate the required sample size for a given power, or to calculate the power given a sample size. 
+
+Example case: the expected difference in means in 10, the standard deviations of the two groups are 15 and 17, the alpha level is 0.05, the statistical power is 0.8, and we are trying to determine the sample size required to reach this power level. We're dealing with two independent groups. 
+
+```{r}
+library(pwr)
+
+# Calculate pooled sd
+pooled_sd = sqrt((15^2 + 17^2)/2)
+expected_diff = 10
+
+pwr.t.test(d=expected_diff/pooled_sd, power=.8, sig.level=0.05, type='two.sample',
+           alternative='two.sided')
+```
+
+This indicates we need about 42 samples to achieve a power of 0.8. 
+
+### Bayesian Power Analysis
+
+Bayesian power is the probability of hitting a given larger posterior probability, usually obtained via simulation. 
+
+Frequentist power is often easier to compute and can give a decent approximation. 
+* This increases if you allow larger type 1 error
+* also increases when mu is far from mu of null
+* decreases as SD goes up
+* increases as sample size goes up
+
+Takeaway seems to be to just use the frequentist analysis to approximate the Bayesian power. 
+
+
+# Regression Analysis
+
+## Basic Linear Regression
+
+A simple linear regression from a binary predictor onto a continuous response gives you the difference between the means of the two groups.
+
+```{r}
+mod <- lm(Sepal.Width ~ Species, data=df[df$Species != 'virginica',])
+summary(mod)
+
+# Coefficients:
+#                   Estimate Std. Error t value Pr(>|t|)
+# (Intercept)        3.42800    0.04921  69.661  < 2e-16 ***
+# Speciesversicolor -0.65800    0.06959  -9.455 1.85e-15 ***
+
+print(mean(df[df$Species == 'setosa', 'Sepal.Width']))
+print(mean(df[df$Species == 'versicolor', 'Sepal.Width']) -
+        mean(df[df$Species == 'setosa', 'Sepal.Width']))
+```
+
+Regression with a single continuous predictor: think of the coefficient as the difference in output if you vary the input by 1 'unit'. The intercept is the value when the input(s) are all zero. In some cases this makes no sense. 
+
+```{r}
+# Example: continuous predictor continuous output
+mod <- lm(Sepal.Width ~ Petal.Width, data=df[df$Species != 'setosa',])
+summary(mod)
+
+df[df$Species != 'setosa',] %>%
+  ggplot(aes(Petal.Width, Sepal.Width)) +
+  geom_point() +
+  geom_abline(aes(intercept=2.1286, slope=.44355))
+```
+
+Multiple predictors:
+
+```{r}
+mod <- lm(Sepal.Width ~ Petal.Width + Species, data=df[df$Species != 'setosa',])
+summary(mod)
+
+# Coefficients:
+#                  Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)       1.74160    0.14996  11.613  < 2e-16 ***
+# Petal.Width       0.77557    0.10965   7.073 2.36e-10 ***
+# Speciesvirginica -0.33890    0.09268  -3.656 0.000415 *** 
+
+df[df$Species != 'setosa',] %>%
+  ggplot(aes(Petal.Width, Sepal.Width, color=Species)) +
+  geom_point() +
+  geom_abline(aes(intercept=1.74160, slope=0.77557)) +
+  geom_abline(aes(intercept=1.74160-0.33890, slope=0.77557))
+
+```
+
+* The intercept would correspond to a versicolor species with 0 petal width, which isn't helpful. 
+* The virginica coefficient shows the difference between versicolor and virginica, where petal width is held fixed. 
+* The petal width coefficient can be viewed as the difference in sepal width between the same species whose petal widths differ by 1 unit.
+
+Note that it's not always possible to change one predictor while holding all others constant.
+
+Including an interaction term:
+
+```{r}
+mod <- lm(Sepal.Width ~ Petal.Width * Species, data=df[df$Species != 'setosa',])
+summary(mod)
+
+# Coefficients:
+#                              Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)                    1.3729     0.2484   5.526 2.81e-07 ***
+# Petal.Width                    1.0536     0.1854   5.684 1.41e-07 ***
+# Speciesvirginica               0.3219     0.3690   0.872   0.3852    
+# Petal.Width:Speciesvirginica  -0.4222     0.2284  -1.849   0.0676 .  
+
+df[df$Species != 'setosa',] %>%
+  ggplot(aes(Petal.Width, Sepal.Width, color=Species)) +
+  geom_point() +
+  geom_abline(aes(intercept=1.3729, slope=1.0536)) +
+  geom_abline(aes(intercept=1.3729+0.3219, slope=1.0536-0.4222)) +
+  geom_smooth(method='lm', se=F) # equivalent, simpler, way of doing it
+
+```
+
+* The intercept is the sepal width of a versicolor with 0 petal width (not meaningful). 
+* The virginica coefficient is the difference with setosa when petal width is 0 (also not meaningful).
+* The petal width coefficient can be understood as the difference between mean sepal widths of versicolor plans whose petal width differs by one unit.
+* The interaction term is the difference in the slope for the two species. 
+
+Note: predictors with large main effects tend to have interactions. 
+General rule: if you include the interaction, include each individual effect.
+
+Roughly, the confidence interval for a coefficient estimate is two standard errors of the estimate. To be more precise, you can use a t distribution with dof = the number of data points - the number of estimated coefficients (or normal approximation with dof > 30). 
+
+If a coefficient estimate is more than two standard errors from zero, we consider it significant. 
+
+Estimated residual variance, sigma_hat**2, has a sampling distribution centetr at the true value and proportional to a chi2 distribution with n-k dof.
+
+The uncertainty in the coefficient estimates will be correlated. This information is encoded in the estimated covariance matrix V * sigma_hat, where:
+
+```{r}
+# Need to work out the below
+X = data=df[df$Species != 'setosa', c('Petal.Width', 'Species')]
+X <- X %>%
+  mutate(Species = ifelse(Species == 'virginica', 1, 0)) %>%
+  as.matrix()
+y <- as.matrix(df[df$Species != 'setosa', 'Sepal.Width'])
+
+means <- colMeans(X)
+X1 <- X[,1] - means[1]
+X2 <- X[,2] - means[2]
+X_center <- cbind(X1, X2)
+
+N <- length(X1)-1
+
+# Sample Covariance Matrix
+C <- (t(X_center) %*% X_center)/N
+
+# Total variance is sum of diagonal of C
+sum(diag(C))
+
+V <- solve(t(X) %*% X) 
+solve(t(X) %*% X) %*% t(X) %*% y
+
+
+# Find residual standard deviation sigma hat
+mod <- lm(Sepal.Width ~ Species + Petal.Width, data = df[df$Species != 'setosa', ])
+
+y_hat <- predict(mod, df[df$Species != 'setosa', c('Petal.Width', 'Species')])
+resids <- y - y_hat
+sigma_hat <- sqrt(sum(resids**2)/(length(resids)-3)) # divide by N - k, 
+# k = # predictors + intercept
+
+data_sd <- sd(y)
+R2 <- (1 - sigma_hat**2/data_sd**2) # Calculate R2
+
+```
+
+Simulation to model uncertainty
+
+```{r}
+library(arm)
+# This function can take a linear model and will return estimates of the coefficients
+# (n.sims many estimates)
+
+mod <- lm(Sepal.Width ~ Petal.Width, data = df[df$Species != 'setosa', ])
+mod_sim <- sim(mod)
+plot(df[df$Species != 'setosa', ]$Petal.Width, 
+     df[df$Species != 'setosa', ]$Sepal.Width, 
+     xlab='Petal Width', ylab='Sepal Width')
+
+for (i in 1:10){
+  curve(coef(mod_sim)[i, 1] + coef(mod_sim)[i, 2]*x, add=TRUE, col='gray')
+}
+
+curve(coef(mod)[1] + coef(mod)[2]*x, add=TRUE, col='red')
+
+```
+
+If you have two inputs, you can display with two plots where in each one variable is fixed at its average value.
+
+```{r}
+df2 = df[df$Species != 'setosa', ] %>%
+  mutate(Species = ifelse(Species == 'versicolor', 1, 0))
+
+mod <- lm(Sepal.Width ~ Petal.Width + Species, data = df2)
+
+beta_hat <- coef(mod)
+beta_sim <- coef(sim(mod))
+
+par(mfrow=c(1,2))
+plot(x=df2$Petal.Width, y=df2$Sepal.Width)
+for (i in 1:10){
+  curve(cbind(1, x, mean(df2$Species)) %*% beta_sim[i, ], 
+        lwd=.5, col='gray', add=TRUE)
+}
+
+curve(cbind(1, x, mean(df2$Species)) %*% beta_hat, 
+        lwd=.5, col='red', add=TRUE)
+
+```
+
+Model Assumptions (in decreasing order of importance):
+
+1. Validity - the data should map to the research question you are trying to answer. 
+2. Additivity and Linearity - most important mathematical assumption is that the deterministic component of the model is a linear function of the predictors (y = B1x1 + B2x2 + ...)
+
+* If additivity is violated, consider taking log of the data (if y=abc, then log(y) = log(a) + log(b) + log(c)) or adding interactions. 
+* If linearity is violated, consider transforming a predictor x to 1/x or log(x) or use both x and x^2, etc. 
+
+3. Independence of errors
+4. Equal variance of errors - if this is violated, it may be better to use weighted least squares (each point is weighted inversely proportional to its variance). Usually this is a minor issue.
+5. Normality of errors. 
+
+To diagnose problems, particularly linearity, plot the residuals against the fitted values or individual predictors. You are looking for strong patterns. 
+
+Prediction:
+
+```{r}
+x_new <- data.frame(Species=1, Petal.Width=3)
+predict(mod, x_new, interval='prediction', level=0.95)
+```
+
+### Linear Transformations
+
+Linear transformations do not affect the fit of a classical regression model and they do not affect predictions (not true for multi-level models). However, LTs can affect the interpretability of the coefficients. 
+
+* Standardization (subtract by mean and divide by SD): The coefficients are now interpreted in units of standard deviations, and the intercept is the mean value when all predictors are at their mean value. (Some prefer to divide by two standard deviations.)
+
+* Centering (e.g. divide by the mean) can be useful especially for models with interaction effects. If you have B0 + B1x1 + B2x2 + B3x1x2, then the coefficient B1 is the predictive difference from a change of one unit of x1 when x2 is zero - i.e., when x2 is at its mean (prior to scaling, a 0 value for x2 would often not make sense).
+
+### Log Transformations
+
+Often makes sense to take log of target variable when all values are positive. 
+
+The log scale also gives you a multiplicative model on the original scale. 
+
+```{r}
+# Example: Sepal.Width regressed on Petal.Width
+mod <- lm(log(Sepal.Width) ~ Petal.Width, data=df)
+summary(mod)
+
+# Coefficients:
+#             Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)  1.22825    0.01873  65.571  < 2e-16 ***
+# Petal.Width -0.06447    0.01285  -5.017 2.34e-06 ***
+```
+
+With small coefficients, you can directly interpret them as a proportional change in the response. So a one unit change in Petal.Width corresponds to around a 6.4% decrease in Sepal.Width.
+
+```{r}
+# Example 2: continuous and categorical predictors
+mod <- lm(log(Sepal.Width) ~ Petal.Width + Species, data=df)
+summary(mod)
+# Coefficients:
+#                  Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)       1.17221    0.01874  62.561  < 2e-16 ***
+# Petal.Width       0.21809    0.04915   4.437 2.41e-05 ***
+# Speciesvirginica -0.52987    0.08980  -5.901 5.31e-08 ***
+```
+
+After controlling for species, a difference in one unit of petal width corresponds to about a 24% increase in sepal width. Two plants of the same petal width but differing by virginica/setosa will differ in that the virginica has .59 times the setosa's sepal width. 
+
+```{r}
+# Example 3: adding interaction
+mod <- lm(log(Sepal.Width) ~ Petal.Width * Species, data=df)
+summary(mod)
+# Coefficients:
+#                              Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)                   1.16721    0.03685  31.677  < 2e-16 ***
+# Petal.Width                   0.23839    0.13790   1.729   0.0871 .  
+# Speciesvirginica             -0.51882    0.11426  -4.541 1.63e-05 ***
+# Petal.Width:Speciesvirginica -0.02329    0.14770  -0.158   0.8750    
+
+df %>%
+  ggplot(aes(x=Petal.Width, y=log(Sepal.Width), color=Species)) +
+  geom_point() +
+  geom_smooth(method='lm')
+
+```
+
+The intercept coefficient = Sepal width when petal width is zero for setosa (not interpretable)
+
+Petal Width coefficient = difference in log sepal width corresponding to 1 unit change in petal width, if species is not virginica. The one unit change corresponds to about a 27% increase in Sepal width. 
+
+Virginica coefficient = predicted difference in log sepal width when petal width = 0. Has no direct interpretation.
+
+Interaction coefficient = difference in slopes of lines predicting log sepal width on petal width for virginica vs setosa. The slope for virginica will be (0.23839-0.02329) and for setosa just 0.23839.
+
+   ## Logistic Regression
+
+# Bayesian Statistics
+
+```{r}
+library(rstanarm)
+df <- iris[iris$Species!='setosa',]
+
+mod <- stan_glm(Sepal.Width ~ Petal.Width, data=df)
+mod
+
+sims <- as.matrix(mod)
+```
+
+```{r}
+new_x= data.frame('Petal.Width' = 2)
+
+new_pred <- predict(mod, newdata = new_x)
+# or by hand
+a <- coef(mod)[1]
+b <- coef(mod)[2]
+
+print(new_pred)
+print(a + 2 * b)
+
+# vector representing uncertainty of the *average*
+# for this particular value of x (not the predictive uncertainty)
+y_linpred <- posterior_linpred(mod, newdata=new_x)
+a <- sims[,1]
+b <- sims[,2]
+y_linpred_manual <- a + 2 * b
+
+lines <- tibble
+
+df %>%
+  ggplot(aes(Petal.Width, Sepal.Width)) +
+  geom_point(position=position_jitter(), alpha=.5) +
+  geom_abline(aes(intercept=intercept, slope=slope),
+              data=lines[1:50,],alpha=.6, color='grey')+
+    geom_abline(aes(intercept=2.13, slope=0.44),
+              color='firebrick')
+```
+
+```{r}
+# vector representing prediction uncertainty
+y_pred <- posterior_predict(mod, newdata=new_x)
+
+# by hand
+n_sims <- nrow(sims)
+sigma <- sims[,3]
+y_pred_manual <- as.numeric(a + b * new_x) + rnorm(n_sims, 0, sigma)
+
+data.frame(x=y_pred) %>% 
+  ggplot() + 
+  geom_histogram(aes(x), alpha=.5, fill='yellow') +
+  geom_histogram(aes(x), data=data.frame(x=y_pred_manual),
+                 alpha=.5, fill='blue')
+```
+
+
+
+
+
+## Examples from Gelman
+
+```{r}
+# Small sample using t distribution to calculate CIs for the mean
+y <- c(35, 34, 38, 35, 37)
+
+n <- length(y)
+estimate <- mean(y)
+se <- sd(y)/sqrt(n)
+
+# 50 and 95 percent CIs
+int.50 <- estimate + qt(c(.25, .75), n-1)*se
+int.95 <- estimate + qt(c(.025, .975), n-1)*se
+```
+
+```{r}
+# Example calculating CI estimates for a proportion
+# 700 people, 300 say yes 400 say no
+y <- 700
+n <- 1000
+
+estimate <- y/n
+se <- sqrt(estimate*(1-estimate)/n)
+int.95 <- estimate + qnorm(c(.025, .975))*se
+int.95
+```
+
+```{r}
+# Discrete data example
+# Survey asking # cats in house, responses look like this
+y <- rep(c(0, 1, 2, 3, 4), c(600, 300, 50, 30, 20))
+
+n <- length(y)
+estimate <- mean(y)
+se <- sd(y)/sqrt(n)
+
+# 50 and 95 percent CIs
+int.50 <- estimate + qt(c(.25, .75), n-1)*se
+int.95 <- estimate + qt(c(.025, .975), n-1)*se
+int.95
+
+# Note: to get CIs for linearly transformed parameter, just apply the transformation to the CIs
+```
+
+```{r}
+# Weighted averages, SEs and CIs
+
+# vector of pop sizes (the weights)
+N <- c(130, 25, 700, 643, 321, 125)
+# estimated proportions
+p <- c(.4, .11, .34, .42, .21, .22)
+# standard errors
+se <- c(.03, .12, .021, .024, .033, .054)
+
+w.avg <- sum(N*p)/sum(N)
+se.w.avg <- sqrt( sum ((N*se/sum(N))^2))
+int.95 <- w.avg + c(-2, 2)*se.w.avg
+
+int.95
+```
+
+```{r}
+# For quantities more complicated than linear transformations, use simulation to calculate CIs and se
+
+# Example: 100 respondents, 500 men 500 women
+# support 75% among men 65% among women
+# want to estimate ratio of support .85/.65 = 1.15
+# getting the se is best via simulation
+
+n_men <- 500
+p_hat_men <- 0.75
+se_men <- sqrt(p_hat_men * (1-p_hat_men)/n_men)
+
+n_women <- 500
+p_hat_women <- .65
+se_women <- sqrt(p_hat_women * (1-p_hat_women)/n_women)
+
+n_sims <- 10000
+p_men <- rnorm(n_sims, p_hat_men, se_men)
+p_women <- rnorm(n_sims, p_hat_women, se_women)
+ratio <- p_men/p_women
+print(mean(ratio))
+print(quantile(ratio, c(.025, .975)))
+```
+
+```{r}
+# Problems with summarizing comparisons by statistical significance
+# stat sig doesn't equal practical significance
+# changes in statistical significance are not themselves significant
+# large changes in significance levels can correspond to small, nonsignificant changes in the underlying variables
+```
+
