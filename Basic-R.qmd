@@ -10,12 +10,10 @@ editor: visual
 ls() # List of objects in the environment
 ```
 
-
 ```{r}
 Filter()
 # x
 ```
-
 
 # Names & Values
 
@@ -356,7 +354,7 @@ tibble::rownames_to_column(df4)
 
 Important tibble/df difference for subsetting:
 
--   When you subset columns with df[, vars], you will get a vector if vars selects one variable, otherwise you'll get a data frame. This is a frequent source of bugs when using [ in a function, unless you always remember to use df[, vars, drop = FALSE].
+-   When you subset columns with df\[, vars\], you will get a vector if vars selects one variable, otherwise you'll get a data frame. This is a frequent source of bugs when using \[ in a function, unless you always remember to use df\[, vars, drop = FALSE\].
 
 -   When you attempt to extract a single column with df$x and there is no column x, a data frame will instead select any variable that starts with x. If no variable starts with x, df$x will return NULL. This makes it easy to select the wrong variable or to select a variable that doesn't exist.
 

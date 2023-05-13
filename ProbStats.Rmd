@@ -1603,6 +1603,49 @@ cor(mydata[, 1], mydata[, 2])
 boot.ci(boot_res)
 ```
 
+### Three Types of Intervals
+
+```{r}
+
+X <- rexp(1e3, rate = 10)
+plot(ecdf(X))
+
+mean(X)
+
+plot(X)
+hist(X)
+
+ggplot() +
+  stat_ecdf(aes(X))
+
+B <- 1e4
+T <- mean(X)
+Tboot <- vector(length = B)
+for (i in 1:B){
+  sample <- sample(X, length(X), replace = T)
+  Tboot[i] <- mean(sample)
+}
+se <- sd(Tboot)
+sqrt(var(X)/length(X))
+
+# 95% CI (Normal Interval)
+n_high <- T + se * 1.96 
+n_low <- T - se * 1.96
+n_dif <- n_high - n_low
+
+# 95% CI (Pivotal Interval)
+piv_high <- 2 * T - quantile(Tboot, .025)
+piv_low <- 2 * T - quantile(Tboot, .975)
+piv_dif <- piv_high - piv_low
+
+# 95% CI (Percentile Interval)
+per_high <- quantile(Tboot, .975)
+per_low <- quantile(Tboot, .025)
+per_dif <- per_high - per_low
+
+
+```
+
 
 ## Power Analysis
 

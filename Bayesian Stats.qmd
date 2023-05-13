@@ -124,7 +124,7 @@ General principles:
   
 ### Beta Prior
 
-Useful priors when dealing with probability values: beta distribution
+Useful priors when dealing with probability values
 
 This is particularly helpful with a binomial model like this because it is a conjugate prior and the posterior is very easy to analytically determine. 
 
