@@ -4,11 +4,13 @@ format:
   html:
     theme: default
     toc: true
+editor: source
 ---
 
 ```{r, include=F}
 packages <- c('rethinking', 'rstan', 'bayesplot', 
-              'tidybayes', 'tidyverse', 'shinystan')
+              'tidybayes', 'dplyr', 'ggplot2',
+              'shinystan')
 
 lapply(packages, library, character.only=T)
 
@@ -30,25 +32,6 @@ References:
 
 ![](BDA-Workflow-Chart.png)
 
-# Working Example
-
-Example involves identifying proportions of folks selected for a program. The selection probability depends on their education and pay plan, and the highly educated people are more likely to be in the pay plan with the high selection probability. The goal is to correctly identify the different probabilities. 
-
-```{r}
-df <- tibble(
-  x = 1:1e4,
-  edu = rbinom(1e4, 1, .3), # 1 = 'highly educated', 0 = 'normal',
-  edu_grp = ifelse(edu == 1, 'high_edu', 'low_edu'),
-  pp = rbinom(1e4, 1, ifelse(edu == 1, .2, .05)), # chance of being CC dep on edu
-  pp_grp = ifelse(pp == 1, 'CC', 'GS'),
-  base_prob = .15,
-  edu_prob = ifelse(edu == 1, .2, 0),
-  pp_add = ifelse(pp == 1, .35, 0),
-  prob = edu_prob + pp_add + base_prob,
-  y = rbinom(1e4, 1, prob)
-)
-```
-
 # Pick an Initial Model
 
 General advice:
@@ -64,6 +47,8 @@ Need to format data as a list for Stan.
 Using TidyBayes:
 
 ```{r}
+d <- iris
+
 # Vanilla method
 stan_data <- list(
   n = nrow(df),

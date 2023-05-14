@@ -10,9 +10,7 @@ Notes on creating reproducible analytical pipelines from here:
 
 https://raps-with-r.dev/intro.html
 
-DRY: Don’t Repeat Yourself;
-WIT: Write IT down.
-
+DRY: Don't Repeat Yourself; WIT: Write IT down.
 
 # Functional Programming
 
@@ -24,7 +22,7 @@ The `<<-` operator saves a variable defined within a function to the global envi
 
 From Wikipedia:
 
-"In computer programming, a pure function is a function that has the following properties: [1] the function return values are identical for identical arguments (no variation with local static variables, non-local variables, mutable reference arguments or input streams), and [2] the function has no side effects (no mutation of local static variables, non-local variables, mutable reference arguments or input/output streams)."
+"In computer programming, a pure function is a function that has the following properties: \[1\] the function return values are identical for identical arguments (no variation with local static variables, non-local variables, mutable reference arguments or input streams), and \[2\] the function has no side effects (no mutation of local static variables, non-local variables, mutable reference arguments or input/output streams)."
 
 Try to use pure functions.
 
@@ -131,4 +129,3 @@ return_section <- function(dataset, var){
 invisible(lapply(colnames(mtcars), return_section, dataset = mtcars))
 
 ```
-

@@ -1,18 +1,66 @@
 ---
 title: "Basic R"
 format: html
-editor: visual
+editor: source
+editor_options: 
+  chunk_output_type: console
 ---
+
+alt-shift-k -> R Studio shortcuts
+
+# Efficiency
+
+* A golden rule in R programming is to access the underlying C/Fortran routines as quickly as possible; the fewer functions calls required to achieve this, the better.
+
+* Pre-allocate objects rather than growing them (e.g. by a for-loop).
+
+* Using 1:length(x) can lead to hard-to-find bugs (e.g. in for-loops) when x has length zero. Instead use seq_along(x) or seq_len(length(x)). 
+
+## I/O
+
+* If possible, keep the names of local files downloaded from the internet or copied onto your computer unchanged. This will help you trace the provenance of the data in the future.
+
+* R’s native file format is .Rds. These files can be imported and exported using readRDS() and saveRDS() for fast and space efficient data storage.
+
+* Use import() from the rio package to efficiently import data from a wide range of formats, avoiding the hassle of loading format-specific libraries.
+
+* Use the readr or data.table equivalents of read.table() to efficiently import large text files.
+
+* Use file.size() and object.size() to keep track of the size of files and R objects and take action if they get too big.
+
+Example of getting data from a webpage:
+
+```{r}
+url = "https://www.monetdb.org/sites/default/files/voc_tsvs.zip"
+download.file(url, "voc_tsvs.zip") # download file
+unzip("voc_tsvs.zip", exdir = "data") # unzip files
+file.remove("voc_tsvs.zip") # tidy up by removing the zip file
+
+url = "https://vincentarelbundock.github.io/Rdatasets/csv/datasets/co2.csv"
+download.file(url, "extdata/co2.csv")
+df_co2 = read_csv("extdata/co2.csv")
+```
 
 # Useful Functions
 
 ```{r}
-ls() # List of objects in the environment
+# Update R Stuff
+
+# check and install the latest R version
+installr::updateR()
+installr::install.rtools()
+
+# update installed CRAN packages
+update.packages() 
 ```
 
 ```{r}
-Filter()
-# x
+ls() # List of objects in the environment
+
+Sys.info() # System and User Info
+
+Sys.Date()
+Sys.time()
 ```
 
 # Names & Values
@@ -234,6 +282,8 @@ Four important S3 vectors in R:
 ### Factors
 
 Factors are built on top of integer vectors using two attributes: the `class`, "factor", which makes them behave differently from regular integer vectors, and the `levels`, which defines the set of allowed values.
+
+As a general rule, if your variable has an inherent order, e.g. small vs large, or you have a fixed set of categories, then you should consider using a factor.
 
 ```{r}
 X <- factor(c('brown', 'brown', 'red', 'red', 'blue', 'green'))
@@ -531,3 +581,12 @@ for (i in seq_along(xs)) {
   print(xs[[i]])
 }
 ```
+
+
+# Functions
+
+
+
+Raise fatal errors with `stop()`.
+
+Functions to use within your functions: stop(), try(), tryCatch(), warning(), message(), cat() -> for communicating with the user

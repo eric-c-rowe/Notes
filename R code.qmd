@@ -1,7 +1,7 @@
 ---
 title: "R Notes"
 format: html
-editor: visual
+editor: source
 ---
 
 ```{r}
