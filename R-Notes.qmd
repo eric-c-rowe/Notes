@@ -1,0 +1,1407 @@
+---
+title: "Basic R"
+format: html
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+alt-shift-k -> R Studio shortcuts
+
+# Efficiency
+
+* A golden rule in R programming is to access the underlying C/Fortran routines as quickly as possible; the fewer functions calls required to achieve this, the better.
+
+* Pre-allocate objects rather than growing them (e.g. by a for-loop).
+
+* Using 1:length(x) can lead to hard-to-find bugs (e.g. in for-loops) when x has length zero. Instead use seq_along(x) or seq_len(length(x)). 
+
+## I/O
+
+* If possible, keep the names of local files downloaded from the internet or copied onto your computer unchanged. This will help you trace the provenance of the data in the future.
+
+* R’s native file format is .Rds. These files can be imported and exported using readRDS() and saveRDS() for fast and space efficient data storage.
+
+* Use import() from the rio package to efficiently import data from a wide range of formats, avoiding the hassle of loading format-specific libraries.
+
+* Use the readr or data.table equivalents of read.table() to efficiently import large text files.
+
+* Use file.size() and object.size() to keep track of the size of files and R objects and take action if they get too big.
+
+Example of getting data from a webpage:
+
+```{r}
+url = "https://www.monetdb.org/sites/default/files/voc_tsvs.zip"
+download.file(url, "voc_tsvs.zip") # download file
+unzip("voc_tsvs.zip", exdir = "data") # unzip files
+file.remove("voc_tsvs.zip") # tidy up by removing the zip file
+
+url = "https://vincentarelbundock.github.io/Rdatasets/csv/datasets/co2.csv"
+download.file(url, "extdata/co2.csv")
+df_co2 = read_csv("extdata/co2.csv")
+```
+
+# Useful Functions
+
+```{r}
+# Update R Stuff
+
+# check and install the latest R version
+installr::updateR()
+installr::install.rtools()
+
+# update installed CRAN packages
+update.packages() 
+```
+
+```{r}
+ls() # List of objects in the environment
+
+Sys.info() # System and User Info
+
+Sys.Date()
+Sys.time()
+```
+
+```{r}
+# match() function
+
+needles <- c(1, 2)
+haystack <- c(1, 3, 4, 2, 5, 9)
+
+match(needles, haystack)
+
+# order() takes a vector as its input and returns an integer vector describing how to order the subsetted vector
+haystack[order(haystack)]
+
+# which() allows you to convert a Boolean representation to an integer representation. 
+needles > 1
+which(needles > 1)
+```
+
+There are two main logical summaries: any() and all(). any(x) is the equivalent of |; it’ll return TRUE if there are any TRUE’s in x. all(x) is equivalent of &; it’ll return TRUE only if all values of x are TRUE’s. Like all summary functions, they’ll return NA if there are any missing values present, and as usual you can make the missing values go away with na.rm = TRUE.
+
+readr provides two useful functions for parsing strings into numbers: parse_double() and parse_number(). Use parse_double() when you have numbers that have been written as strings. Use parse_number() when the string contains non-numeric text that you want to ignore. This is particularly useful for currency data and percentages.
+
+`round()`:
+
+```{r}
+round(123.456, 2)  # two digits
+#> [1] 123.46
+round(123.456, 1)  # one digit
+#> [1] 123.5
+round(123.456, -1) # round to nearest ten
+#> [1] 120
+round(123.456, -2) # round to nearest hundred
+#> [1] 100
+```
+
+Avoid df prefixing:
+
+```{r}
+# one option
+mean(iris$Sepal.Length)
+
+# is equivalent to
+with(iris, mean(Sepal.Length))
+```
+
+Indexing operations:
+
+```{r, eval=F}
+# 'which' function returns the index for a condition
+which(iris$Sepal.Length == max(iris$Sepal.Length))
+
+# Can also call which.max or which.min
+which.max(iris$Sepal.Length)
+
+# Can use to filter a dataset
+iris[which.max(iris$Sepal.Length), ]
+
+# Other ways of checking conditions and returning booleans
+any(iris$Sepal.Length > 5)
+
+all(iris$Sepal.Length > 5)
+```
+
+Rounding numbers:
+
+```{r}
+a <- c(2.1241, 3.86234, 4.5, -4.5, 10000.1001)
+round(a, 3)           # Rounds to 3 decimal places
+signif(a, 3)          # Rounds to 3 significant digits
+ceiling(a)            # Rounds up to the nearest integer
+floor(a)              # Rounds down to the nearest integer
+trunc(a)              # Rounds to the nearest integer, toward 0
+```
+
+Summary functions across rows/columns:
+
+```{r}
+# Sum across rows
+colSums(iris[,1:4])
+
+# If there were NA values, this is useful
+colSums(is.na(iris[,1:4]))
+
+# Other similar row and column calculations
+rowSums(iris[,1:4])
+rowMeans(iris[,1:4])
+colMeans(iris[,1:4])
+```
+
+Cumulative Functions:
+
+```{r}
+# Cumulative Functions
+library(fpp2)
+
+cumsum(a10[7:18])  # Total sales
+cummax(a10[7:18])  # Highest monthly sales
+cummin(a10[7:18])  # Lowest monthly sales
+
+# also cummean(), cumprod()
+
+plot(1:12, cumsum(a10[7:18]),
+     xlab = "Month",
+     ylab = "Total sales",
+     type = "b")
+```
+
+Lead/Lag
+
+```{r}
+(x <- 1:10)
+(lead(x))
+(lag(x))
+
+# Can use these functions for running differences
+(x - lag(x))
+```
+
+Ranking Functions
+
+```{r}
+y <- c(1, 2, 2, NA, 3, 4, 6, 12)
+
+# Rank ascending
+(min_rank(y))
+# Rank descending
+(min_rank(desc(y)))
+
+# Other rank functions
+row_number(y)
+#> [1]  1  2  3 NA  4  5
+dense_rank(y)
+#> [1]  1  2  2 NA  3  4
+percent_rank(y)
+#> [1] 0.00 0.25 0.25   NA 0.75 1.00
+cume_dist(y)
+#> [1] 0.2 0.6 0.6  NA 0.8 1.0
+```
+
+Scientific Notation:
+
+```{r}
+# Turn off scientific notation
+small_number = 3.1 * 10^-7
+format(small_number, scientific = FALSE) # Gives a character
+
+# Or you can change the options setting
+options(scipen = 1000)
+small_number
+
+# Revert
+options(scipen = 0)
+small_number
+```
+
+
+# Names & Values
+
+Copy-on-modify behavior:
+
+```{r}
+x <- 1:3 # Create x
+y <- x # have y bound to same underlying value as x
+y[3] <- 4
+y
+x
+```
+
+When y is modified, the underlying value is not modified. Rather, a new (altered) value is created and y is bound to that new value.
+
+Using tracemem to see when an object gets copied:
+
+```{r}
+x <- c(1, 2, 3)
+cat(tracemem(x), "\n") # Shows object's current address
+
+y <- x
+y[[3]] <- 4L
+
+untracemem(x) # turns off memory tracing
+```
+
+If you modify `y` again, it won't get copied. That's because the new object now only has a single name bound to it, so R applies modify-in-place optimisation.
+
+Lists don't store values themselves, but references to those values. So you get similar behaviors.
+
+```{r}
+x <- list(1, 2, 3)
+y <- x
+y[[1]] <- 4
+
+x
+y
+```
+
+### Object Size
+
+```{r}
+x <- 1:10
+lobstr::obj_size(x)
+
+y <- 1:1e5
+lobstr::obj_size(y)
+
+# Same size, since R just stores the first and last numbers
+
+lobstr::obj_size(c('A', 'B', 'C'))
+```
+
+### Modify-in-Place
+
+Modifying an object usually creates a copy, except when it's an object with a single binding or an 'environment'.
+
+```{r}
+x <- c(1, 2, 3)
+y <- x
+
+x[3] <- 22
+x
+y
+
+lobstr::obj_addr(x)
+lobstr::obj_addr(y)
+```
+
+
+### Garbage Collector
+
+The 'garbage collector' removes objects that are no longer used (are no longer bound to any objects) and requests more memory from the operating system when needed.
+
+| R uses a **tracing** GC. This means it traces every object that's reachable from the global environment, and all objects that are, in turn, reachable from those objects (i.e. the references in lists and environments are searched recursively).
+
+```{r}
+gcinfo(TRUE) # shows when the garbage collector runs
+```
+
+# Data Structures
+
+1-Dimensional:
+
+-   Vectors (Homogeneous)
+-   Lists (Heterogeneous)
+
+2-Dimensional:
+
+-   Matrix (Homogeneous)
+-   Data Frame (Heterogeneous)
+
+N-Dimensional:
+
+-   Array (Homogeneous)
+
+## Vectors
+
+Two types: atomic vectors and lists
+
+Three properties:
+
+```{r}
+
+X <- c('a', 'b', 1)
+
+str(X) # Show structure of object
+typeof(X) # Show type of object
+length(X) # How many elements it contains
+attributes(X) # Show additional metadata
+
+# Don't use is.atomic(), is.numeric(), is.vector()
+```
+
+### Atomic Vectors
+
+Four common types: double, integer, logical, character
+
+Less common types: complex, raw
+
+```{r}
+# 'L' suffix specifies integers
+X <- c(6, 2, 5, 9)
+typeof(X)
+X <- c(6L, 2L, 5L, 9L)
+typeof(X)
+
+# Atomic vectors are always flat, so nested vectors get leveled
+X <- c(1, c(2, c(3)))
+X
+
+int_var <- c(1L, 6L, 10L)
+typeof(int_var)
+is.integer(int_var)
+
+dbl_var <- c(1, 2.5, 4.5)
+typeof(dbl_var)
+is.double(dbl_var)
+
+# is.numeric returns TRUE for either double or integer
+```
+
+Coercion: to make all elements of an atomic vector of the same type, elements will be coerced to the most flexible type. In order of flexibility: logical, integer, double, and character.
+
+```{r}
+# Useful for dealing with logical vectors for mathematical operations
+X <- c(0, 0, 0, 1, 1, 1, 1, 1)
+mean(X)
+
+# Can explicitly coerce with as.character(), as.double(), as.integer(), or as.logical()
+```
+
+#### Missing Values
+
+Technically there are four missing values, one for each of the atomic types: `NA` (logical), `NA_integer_` (integer), `NA_real_` (double), and `NA_character_` (character). This distinction is usually unimportant because `NA` will be automatically coerced to the correct type when needed.
+
+### Lists
+
+The elements of a list can be of any type, including other lists. 
+
+Lists contain references to objects, not the objects themselves.
+
+```{r}
+X <- list(1, 2, 3, T, F, 'Hello', 3.14159)
+
+str(X)
+typeof(X)
+length(X)
+attributes(X)
+
+# Unlike atomic vectors, lists can be recursive
+is.recursive(X)
+X <- list(1, list(2, 3), list(4, 5, list(6)))
+str(X)
+X
+
+# c() combines several lists into one
+X <- list(1, 2, 3)
+Y <- list('a', 'b', 'c')
+c(X, Y)
+
+# To check if list
+is.list(X)
+# To coerce to list
+as.list(c(1, 2))
+
+unlist(X) # takes a list an produces vector with its atomic components
+unlist(c(X, Y))
+```
+
+```{r}
+X <- list(1, 2, 3, T, F, 'Hello', 3.14159)
+
+as.vector(X) # Not what you want for this
+unlist(X) # Use this to get atomic vector from list
+
+
+```
+
+
+## Attributes
+
+Objects can have additional attributes. 
+
+Matrices and Arrays are built on top of atomic vectors using a 'dimension' attribute. 
+
+The class attribute is used to build factors, dates, and date-times.
+
+Attributes are like name-value pairs attaching metadata to an object.
+
+```{r}
+X <- 1:10
+attr(X, 'Name') <- "Eric's Vector"
+str(X)
+
+structure(X, Name = "Eric's New Vector")
+# Lets you change attributes
+
+str(attributes(X))
+
+# Ways of specifying names
+c('a' = 1, 'b' = 3, 'c' = 24) # Option 1
+X <- 1:3
+names(X) <- c('a', 'b', 'c') # Option 2
+X <- setNames(1:3, c('A', 'B', 'C')) # Option 3
+
+# Use names() to get and modify names
+names(X)
+names(X) <- c('a', 'b')
+
+X <- unname(X) # remove names
+```
+
+Most attributes are lost when modifying a vector. Names and dimension are the only attributes routinely preserved through operations.
+
+
+### Class
+
+Having a class attribute turns an object into an **S3 object**, which means it will behave differently from a regular vector when passed to a **generic** function. Every S3 object is built on top of a base type, and often stores additional information in other attributes.
+
+Four important S3 vectors in R:
+
+-   Factors
+
+-   Dates
+
+-   Date-Times
+
+-   Durations
+
+### Factors
+
+Factors are built on top of integer vectors using two attributes: the `class`, "factor", which makes them behave differently from regular integer vectors, and the `levels`, which defines the set of allowed values.
+
+As a general rule, if your variable has an inherent order, e.g. small vs large, or you have a fixed set of categories, then you should consider using a factor.
+
+```{r}
+X <- factor(c('brown', 'brown', 'red', 'red', 'blue', 'green'))
+
+str(X) # Factor w/4 levels
+typeof(X) # Note it has integer type
+levels(X)
+attributes(X)
+class(X)
+
+# You can't use values that are not in the factor's levels
+X[7] <- 'black'
+X
+
+unclass(X)
+```
+
+### Dates
+
+Built on top of double vectors. They have a 'date' attribute and no other attributes.
+
+```{r}
+today <- Sys.Date()
+
+typeof(today)
+attributes(today)
+
+# The value of the underlying double is n-days since 1970-01-01
+date <- as.Date("1970-02-01")
+unclass(date)
+```
+
+### Date-Times
+
+Two ways of storing date-times: POSIXct & POSIXlt "POSIX" is short for Portable Operating System Interface 'ct' = 'calendar time' 'lt' = 'local time'
+
+POSIXct vectors are built on top of double vectors, where the value represents the number of seconds since 1970-01-01. Takes a time zone attribute.
+
+```{r}
+now <- as.POSIXct('2023-04-05 4:23', tz = 'EST')
+typeof(now) # underlying vector is a double
+class(now)
+attributes(now)
+```
+
+### Durations
+
+Represent the difference between dates or date-times. Built on top of doubles and have a 'units' attribute.
+
+```{r}
+one_week_1 <- as.difftime(1, units = "weeks")
+one_week_1
+
+typeof(one_week_1)
+attributes(one_week_1)
+
+one_week_2 <- as.difftime(7, units = "days")
+one_week_2
+
+typeof(one_week_2)
+attributes(one_week_2)
+```
+
+### Dimension
+
+```{r}
+x <- matrix(1:6, nrow = 2, ncol = 3)
+x
+
+y <- array(1:12, c(2, 3, 2))
+y
+
+# You can also modify an object in place by setting dim()
+z <- 1:6
+dim(z) <- c(3, 2)
+```
+
+## Data Frames
+
+A data frame is a named list of vectors with attributes for (column) names, row.names, and its class, "data.frame". The length of each vector must be the same (unlike regular lists).
+
+```{r}
+df1 <- data.frame(x = 1:3, y = letters[1:3])
+typeof(df1)
+class(df1)
+attributes(df1)
+
+# Contrast with a tibble
+df2 <- tibble::as_tibble(df1)
+typeof(df2)
+class(df2) # tibbles have a longer class vector than dfs
+attributes(df2)
+```
+
+You create a dataframe by supplying name-vector pairs to data.frame(). A key difference with tibbles is that character vectors are by default converted to factors for data.frame(). Additionally, non-syntactic names are converted to syntactic names.
+
+```{r}
+df3 <- data.frame(
+  `1` = 1:3,
+  `2 `= c('Hello', 'Hi', 'Howdy')
+)
+```
+
+While every element of a data frame (or tibble) must have the same length, both data.frame() and tibble() will recycle shorter inputs. However, while data frames automatically recycle columns that are an integer multiple of the longest column, tibbles will only recycle vectors of length one.
+
+Generally, using row names for dataframes is frowned upon.
+
+```{r}
+# To get rid of rownames:
+df4 <- data.frame(
+  age = c(35, 27, 18),
+  hair = c("blond", "brown", "black"),
+  row.names = c("Bob", "Susan", "Sam")
+)
+
+tibble::rownames_to_column(df4)
+```
+
+Important tibble/df difference for subsetting:
+
+-   When you subset columns with `df[, vars]`, you will get a vector if vars selects one variable, otherwise you'll get a data frame. This is a frequent source of bugs when using `[` in a function, unless you always remember to use `df[, vars, drop = FALSE]`.
+
+-   When you attempt to extract a single column with `df$x` and there is no column x, a data frame will instead select any variable that starts with x. If no variable starts with x, `df$x` will return NULL. This makes it easy to select the wrong variable or to select a variable that doesn't exist.
+
+Tibbles tweak these behaviors so that a `[` always returns a tibble, and a `$` doesn't do partial matching and warns if it can't find a variable
+
+## NULL
+
+NULL is a unique type that has length 0 and can't have any attributes.
+
+```{r}
+typeof(NULL)
+length(NULL)
+
+x <- NULL
+attr(x, "y") <- 1
+
+is.null(x)
+```
+
+Use this to represent an empty vector of arbitrary type or an absent vector.
+
+# Subsetting
+
+## ...for Atomic Vectors
+
+```{r}
+x <- c(2.1, 4.2, 3.3, 5.4)
+x[c(3, 1)]
+x[order(x)]
+
+# Duplicate indices will duplicate values
+x[c(1, 1)]
+
+# Real numbers are silently truncated to integers
+x[c(2.1, 2.9)]
+
+# Negative integers exclude elements
+x[c(-1, -2)]
+# Note that you can't mix positive & neg integers
+
+# Logical vectors filter for when the value is TRUE
+x[x > 2.5]
+
+# for x[y], if y < x then y will be recycled
+y <- c(TRUE, FALSE)
+x[y]
+
+x[0] # returns 0 length vector
+x[] # returns original vector
+```
+
+Subsetting a list works like subsetting an atomic vector. `[]` will return another list while `[[]]` will return the value itself.
+
+## Matrices and Arrays
+
+```{r}
+x <- matrix(1:9, nrow = 3)
+colnames(x) <- c("A", "B", "C")
+x[1:2, ]
+```
+
+Most common subsetting method is to use multiple 1-D vectors
+
+```{r}
+x[c(TRUE, FALSE, TRUE), c("B", "A")]
+
+x[2, 3]
+
+x[2,] # blank vector for a dimension returns all values
+class(x[2,])
+is.matrix(x[2,])
+# The [] operator simplifies the result to the lowest possible dimensionality.
+```
+
+You can also subset higher-dimensional data structures with an integer matrix (or, if named, a character matrix). Each row in the matrix specifies the location of one value, and each column corresponds to a dimension in the array. This means that you can use a 2 column matrix to subset a matrix, a 3 column matrix to subset a 3D array, and so on.
+
+## Dataframes
+
+Data frames have the characteristics of both lists and matrices:
+
+-   When subsetting with a single index, they behave like lists and index the columns, so `df[1:2]` selects the first two columns.
+
+-   When subsetting with two indices, they behave like matrices, so `df[1:3, ]` selects the first three rows (and all the columns
+
+```{r}
+df <- data.frame(x = 1:3, y = 3:1, z = letters[1:3])
+
+df[df$x == 2, ]
+```
+
+## Applications
+
+You can use subsetting to create lookup tables.
+
+```{r}
+x <- c("m", "f", "u", "f", "f", "m", "m")
+lookup <- c(m = "Male", f = "Female", u = NA)
+lookup[x]
+
+# More complicated example
+grades <- c(1, 2, 2, 3, 1)
+
+info <- data.frame(
+  grade = 3:1,
+  desc = c("Excellent", "Good", "Poor"),
+  fail = c(F, F, T)
+)
+
+id <- match(grades, info$grade)
+id
+info[id, ]
+```
+
+Random Sampling:
+
+```{r}
+df <- data.frame(x = c(1, 2, 3, 1, 2), y = 5:1, z = letters[1:5])
+
+# Randomly reorder
+df[sample(nrow(df)), ]
+
+# Select 3 random rows
+df[sample(nrow(df), 3), ]
+
+# Select 6 bootstrap replicates
+df[sample(nrow(df), 6, replace = TRUE), ]
+```
+
+Ordering via integer subsetting
+
+```{r}
+# Randomly reorder df
+df2 <- df[sample(nrow(df)), 3:1]
+df2
+
+df2[order(df2$x), ]
+
+df2[, order(names(df2))]
+```
+
+Selecting columns from df
+
+```{r}
+# remove z
+df[setdiff(names(df), "z")]
+```
+
+
+
+# Control
+
+## Choices
+
+Switch statements
+
+```{r}
+# Replace this
+x_option <- function(x) {
+  if (x == "a") {
+    "option 1"
+  } else if (x == "b") {
+    "option 2" 
+  } else if (x == "c") {
+    "option 3"
+  } else {
+    stop("Invalid `x` value")
+  }
+}
+
+# With this
+x_option <- function(x) {
+  switch(x,
+    a = "option 1",
+    b = "option 2",
+    c = "option 3",
+    stop("Invalid `x` value")
+  )
+}
+
+# The last component of a switch() should always throw an error, otherwise unmatched inputs will invisibly return NULL
+```
+
+Only use switch() with character inputs.
+
+## Loops
+
+```{r}
+# Basic for loop
+for (i in 1:10) {
+  if (i < 3) 
+    next # move to next iteration
+
+  print(i)
+  
+  if (i >= 5)
+    break # end loop
+}
+```
+
+Common for-loop problems:
+
+First, if you're generating data, make sure to preallocate the output container. Otherwise the loop will be very slow.
+
+```{r}
+# Example with output container
+means <- c(1, 50, 20)
+out <- vector("list", length(means))
+for (i in 1:length(means)) {
+  out[[i]] <- rnorm(10, means[[i]])
+}
+```
+
+Second, watch out for iterating over 1:length(x) if x has length 0, which will throw errors. Use seq_along instead.
+
+```{r}
+means <- c()
+out <- vector("list", length(means))
+seq_along(means)
+
+for (i in seq_along(means)) {
+  out[[i]] <- rnorm(10, means[[i]])
+} # No errors
+```
+
+Finally, you might encounter problems when iterating over S3 vectors, as loops typically strip the attributes.
+
+```{r}
+xs <- as.Date(c("2020-01-01", "2010-01-01"))
+for (x in xs) {
+  print(x)
+}
+
+# Instead do this
+for (i in seq_along(xs)) {
+  print(xs[[i]])
+}
+```
+
+In general you want the least flexible solution to your task. For loops are less flexible than while loops which are in turn less flexible than 'repeat' control flows. But for most data science purposes you want to be using the even less flexible map or apply routines. 
+
+# Functions
+
+A function has three parts:
+
+- The formals(), the list of arguments that control how you call the function.
+
+- The body(), the code inside the function.
+
+- the environment(), the data structure that determines how the function finds the values associated with the names.
+
+Exceptions to this are the 'primitive' functions (e.g. mean(), sum()) which just call C code.
+
+You can invoke a function using a list of its args:
+
+```{r}
+args <- list(1:10, na.rm = TRUE)
+do.call(mean, args)
+```
+
+R uses lexical scoping: it looks up the values of names based on how a function is defined, not how it is called. R’s lexical scoping follows four primary rules:
+
+- Name masking
+- Functions versus variables
+- A fresh start
+- Dynamic lookup
+
+Name Masking: The basic principle of lexical scoping is that names defined inside a function mask names defined outside a function. If a name isn’t defined inside a function, R looks one level up (and continues searching up until you hit the global environment).
+
+Since functions are ordinary objects, these rules also apply to functions themselves.
+
+Every time a function is called a new environment is created to host its execution. This means that a function has no way to tell what happened the last time it was run; each invocation is completely independent. 
+
+Lexical scoping determines where, but not when to look for values. R looks for values when the function is run, not when the function is created. Together, these two properties tell us that the output of a function can differ depending on the objects outside the function’s environment.
+
+This can cause issues. To detect this problem, Use codetools::findGlobals(). This function lists all the external dependencies (unbound symbols) within a function
+
+In R, function arguments are lazily evaluated: they’re only evaluated if accessed. Lazy evaluation is powered by a data structure called a promise. A promise has three components:
+
+- An expression, like x + y, which gives rise to the delayed computation.
+
+- An environment where the expression should be evaluated, i.e. the environment where the function is called.
+
+- A value, which is computed and cached the first time a promise is accessed when the expression is evaluated in the specified environment. Good example of this (this property is why you only get one 'calculating...' when you run the code):
+
+```{r}
+double <- function(x) { 
+  message("Calculating...")
+  x * 2
+}
+
+h03 <- function(x) {
+  c(x, x)
+}
+
+h03(double(20))
+```
+
+Thanks to lazy evaluation, default values can be defined in terms of other arguments, or even in terms of variables defined later in the function.
+
+Use `...` to pass additional arguments from one function on to another function.
+
+```{r}
+i01 <- function(y, z) {
+  list(y = y, z = z)
+}
+
+i02 <- function(x, ...) {
+  i01(...)
+}
+
+str(i02(x = 1, y = 2, z = 3))
+```
+
+Most functions exit in one of two ways: they either return a value, indicating success, or they throw an error, indicating failure. 
+
+Two ways of returning a value: implicitly, where the last evaluated expression is the return value, or explicitly, by calling `return`. Most functions return visibly: calling the function in an interactive context prints the result, but you can prevent this by applying `invisible` to the last value. (Calling the function with `withVisible` will override the invisibility.)
+
+If a function cannot complete its assigned task, it should throw an error with `stop()`, which immediately terminates the execution of the function. 
+
+Sometimes a function needs to make temporary changes to the global state. But having to cleanup those changes can be painful (what happens if there’s an error?). To ensure that these changes are undone and that the global state is restored no matter how a function exits, use on.exit() to set up an exit handler. `on.exit()` expressions are always run in order of creation.
+
+# Environments
+
+Generally, an environment is similar to a named list, with four important exceptions:
+
+- Every name must be unique.
+- The names in an environment are not ordered.
+- An environment has a parent.
+- Environments are not copied when modified.
+
+The job of an environment is to associate, or bind, a set of names to a set of values. You can think of an environment as a bag of names, with no implied order. 
+
+Can create an environment using `rlang::env`
+
+```{r}
+e1 <- rlang::env(
+  a = FALSE,
+  b = "a",
+  c = 2.3,
+  d = 1:3,
+)
+
+rlang::env_print(e1)
+rlang::env_names(e1)
+
+# env in which code is currently executing
+current <- rlang::current_env()
+rlang::global_env()
+
+# To compare environments, you need to use identical() and not ==
+identical(current, rlang::global_env())
+```
+
+Every environment has a parent, except the empty env. 
+
+```{r}
+e2a <- rlang::env(d = 4, e = 5)
+e2b <- rlang::env(e2a, a = 1, b = 2, c = 3)
+
+rlang::env_parent(e2b)
+rlang::env_parent(e2a)
+```
+
+"Super Assignment": Regular assignment, <-, always creates a variable in the current environment. Super assignment, <<-, never creates a variable in the current environment, but instead modifies an existing variable found in a parent environment. If <<- doesn’t find an existing variable, it will create one in the global environment. 
+
+You can get and set elements of an environment with $ and [[ in the same way as a list. $ and [[ will return NULL if the binding doesn’t exist.
+
+Add bindings to an environment with `rlang::env_bind()`:
+
+```{r}
+rlang::env_bind(e2a, z = 12)
+rlang::env_print
+
+# to remove a binding
+# rlang::env_unbind()
+```
+
+Functions get(), assign(), exists(), and rm() are all designed for working with the current environment. 
+
+
+# Linear Algebra
+
+Vectors
+
+Basic Operations
+
+```{r}
+# Create a vector
+v <- c(2, 3, 4)
+
+# Transpose
+t(v)
+
+# Scaler multiplication
+5 * v
+
+# Adding vectors
+w <- c(6, 3, 7)
+
+v + w
+
+```
+
+Dot Products
+
+```{r}
+# Elementwise multiplication
+v*w
+
+# For dot product, need to sum
+sum(v * w)
+
+# Vector length
+sqrt(sum(v * v))
+
+# Creating vector of unit length
+v_unit <- v / sqrt(sum(v * v))
+
+sum(v_unit * v_unit)
+
+# Test for orthogonality (want 0 dot product)
+
+a <- c(0, 1)
+b <- c(1, 0)
+
+sum(a * b)
+```
+
+Matrices
+
+```{r}
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3), ncol = 3)
+A
+
+# default is to read in data column-by-column, otherwise use this:
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3), ncol = 3, byrow = TRUE)
+A
+```
+
+```{r}
+# Scalar multiplication
+2 * A
+
+# Transposition
+t(A)
+
+# Sum of Matrices
+B <- matrix(c(1, 0, 1, 2, 3, 1, 2, 0, 4), ncol = 3)
+
+A + B
+```
+
+```{r}
+# Vector multiplication
+A %*% v
+
+# Don't use 
+A * v 
+```
+
+```{r}
+# Matrix multiplication
+
+# Requires number of columns in first matrix match number of rows in second
+# (m x n) with (n x p)
+
+A = matrix(c(1, 4, 6, 3, 7, 2), ncol = 2)
+
+B = matrix(c(4, 3), ncol = 1)
+
+# (3x2) %*% (2x1) yields (3x1)
+A %*% B
+```
+
+```{r}
+# 0 and 1 matrix
+matrix(0, ncol = 5, nrow = 5)
+matrix(1, ncol = 7, nrow = 8)
+
+# Diagonal matrix
+diag(c(4, 5, 2, 6, 7))
+
+# Identity in R^5
+diag(1, 5)
+
+# Using diag on a matrix returns the diagonal entries
+diag(A)
+```
+
+```{r}
+# Find the inverse of a matrix (must be square)
+
+A <- matrix(c(4, 7, 5, 2, 9, 8, 8, 4, 3, 2, 11, 6, 7, 8, 0, 5), ncol = 4)
+
+A_inv <- solve(A)
+
+# Double check
+round(A_inv %*% A, 10) 
+```
+
+Solving Systems
+
+```{r}
+# Solving a linear system of equations
+v <- c(6, 4, 2, 1)
+
+# To solve Ax = b for x...
+A_inv <- solve(A)
+
+A_inv %*% v
+
+# Check
+A %*% (A_inv %*% v)
+```
+
+```{r}
+# Using pracma to find rref
+library(pracma)
+
+C = matrix(c(1, 4, 6, 3, 7, 2), ncol = 2)
+
+rref(C)
+```
+
+Determinants
+
+```{r}
+# Determinants
+det(A)
+
+# If a multiple of one row in A is added to another to produce B,
+# then det(A) = det(b)
+
+A <- matrix(c(1, 2, 4, 0, 2, 3, 1, 4, 5), nrow = 3)
+E <- matrix(c(1, 0, 0, 0, 1, -2, 0, 0, 1), nrow = 3)
+
+det(A)
+det(E %*% A)
+```
+
+Eigenvalues
+
+```{r}
+A <- matrix(c(1, 2, 4, 0, 2, 3, 1, 4, 5), nrow = 3)
+A
+
+eigen(A)
+```
+
+# Tidyverse
+
+## pipes
+
+```{r}
+iris |> # new base R pipe
+  count(Species)
+
+# magrittr pipe 
+library(magrittr)
+
+iris %>%
+  summarize(ncol(.), nrow(.))
+```
+
+## dplyr
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+# Some summary functions
+iris %>%
+  summarize(
+    n(),
+    n_distinct(Species),
+    mean(Petal.Length),
+    median(Petal.Length),
+    sum(Petal.Length),
+    first(Petal.Length),
+    last(Petal.Length),
+    nth(Petal.Length, 5),
+    quantile(Petal.Length, .975),
+    min(Petal.Length),
+    max(Petal.Length),
+    IQR(Petal.Length),
+    mad(Petal.Length),
+    sd(Petal.Length),
+    var(Petal.Length)
+  ) %>%
+  t()
+
+# Count function
+iris %>%
+  count(
+    Species,
+    sort = T,
+    wt = NULL,
+    name = 'Counts'
+    )
+
+# Also tally(), add_count(), add_tally()
+iris %>%
+  tally() # like nrow()
+
+iris %>%
+  group_by(Species) %>%
+  slice(1:5) %>%
+  add_tally() # same as mutate(n = n())
+
+iris %>%
+  add_count(Species) %>%
+  add_tally()
+
+iris %>%
+  group_by(
+    Species,
+    .add = FALSE, # Overrides existing groups
+    .drop = TRUE # Drops levels not in the data
+    ) %>% 
+  summarize(
+    mad(Petal.Length)
+  ) 
+```
+
+Examples using slice functions
+
+```{r}
+iris %>%
+  group_by(Species) %>%
+  filter(Petal.Length >= 5) %>%
+  add_tally() %>%
+  print(n = 30)
+
+iris %>%
+  group_by(Species) %>%
+  slice(10:13)
+
+iris %>%
+  group_by(Species) %>%
+  slice_sample(n = 2)
+
+iris %>%
+  group_by(Species) %>%
+  slice_head(n = 2)
+
+iris %>%
+  group_by(Species) %>%
+  slice_tail(n = 2)
+
+iris %>%
+  group_by(Species) %>%
+  slice_max(Petal.Length)
+
+iris %>%
+  group_by(Species) %>%
+  slice_min(Petal.Length)
+```
+
+Variable Manipulation
+
+```{r}
+iris %>%
+  pull(
+    var = -2, # returns second to last column
+    name = Species # specifies names for the vector
+  )
+```
+
+Helper functions for select() or across()
+
+```{r}
+iris %>%
+  select(contains('Petal'))
+
+iris %>%
+  # select(starts_with('Petal'))
+  select(ends_with('Length')) 
+```
+
+## tidyr
+
+Expand a df to include all combos of given factors
+
+```{r}
+df <- tibble(
+  x = c('A', 'B', 'C'),
+  y = c('red', 'blue', 'yellow'), 
+  z = c(5, 4, 2)
+  ) 
+
+df %>%
+  tidyr::complete(x, y)
+
+df %>%
+  tidyr::expand(x, y)
+```
+
+Combine or separate columns
+
+```{r}
+df <- tibble(
+  month = c(1, 2, 3, 1, 3, 1),
+  day = c(10, 11, 12, 29, 31, 2)
+)
+
+(df_united <- df %>%
+  tidyr::unite(
+    col = month_day,
+    month,
+    day,
+    sep = '-'
+  )
+)
+
+df_united %>%
+  tidyr::separate(
+    month_day,
+    into = c('month2', 'day2')
+  )
+```
+
+Dealing with NA values
+
+```{r}
+(df <- tibble(
+  x = c('A', 'B', NA, 'C', 'B', 'A', 'A', 'C'),
+  y = c(5, NA, 11, 2, 6, 4, NA, 2)
+))
+
+df %>%
+  tidyr::drop_na()
+
+df %>%
+  tidyr::fill(x)
+
+df %>%
+  tidyr::replace_na(
+    list(x = 'HELLO',
+         y = 999)
+  )
+```
+
+nesting
+
+```{r}
+df1 <- iris %>%
+  select(Species, starts_with('Sepal')) %>%
+  group_by(Species) %>%
+  tidyr::nest(
+    data = c(starts_with('Sepal'))
+  )
+
+df1$data[[1]]
+
+df2 <- iris %>%
+  group_by(Species) %>%
+  summarize(q = list(quantile(Sepal.Width)))
+
+df2$q[[1]]
+```
+
+## forcats
+
+```{r}
+df <- tibble(
+  x = factor(c('A', 'A', 'B', 'C', 'C', 'C')),
+  y = factor(c('red', 'green', 'blue', 'yellow', 'yellow', 'red')), 
+  z = c(5, 4, 2, 7, 1, 5)
+  ) 
+
+forcats::fct_count(df$x)
+forcats::fct_match(df$x, 'B')
+forcats::fct_unique(df$x)
+
+# Combine factors
+forcats::fct_c(df$x, df$y)
+forcats::fct_cross(df$x, df$y)
+```
+
+```{r}
+levels(df$x)
+forcats::fct_relevel(df$x, c('B', 'A', 'C'))
+
+# Reorder by frequency
+forcats::fct_infreq(df$x)
+# Or by order in which they appear in data
+forcats::fct_inorder(df$x)
+# reorder by reference to another variable
+forcats::fct_reorder(df$x, df$z, .fun = max, .desc = TRUE)
+```
+
+
+```{r}
+# Manipulate levels
+
+df %>%
+  mutate(x2 = forcats::fct_lump_min(x, min = 2), # lump if appear < min times
+         x3 = forcats::fct_lump_n(x, n = 1), # lump all but the n most freq
+         x4 = forcats::fct_lump_lowfreq(x, other_level = 'Other!')
+         # lumps together the least frequent levels, 
+         # ensuring that "other" is still the smallest level.
+         )
+
+forcats::fct_other(df$x, keep = c('A', 'B'), other_level = 'OTHER')
+
+df$x <- forcats::fct_expand(df$x, 'D') # add a level to x
+forcats::fct_drop(df$x) # drop unused levels
+```
+
