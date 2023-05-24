@@ -8,42 +8,12 @@ editor_options:
 
 alt-shift-k -> R Studio shortcuts
 
-# Efficiency
-
-* A golden rule in R programming is to access the underlying C/Fortran routines as quickly as possible; the fewer functions calls required to achieve this, the better.
-
-* Pre-allocate objects rather than growing them (e.g. by a for-loop).
-
-* Using 1:length(x) can lead to hard-to-find bugs (e.g. in for-loops) when x has length zero. Instead use seq_along(x) or seq_len(length(x)). 
-
-## I/O
-
-* If possible, keep the names of local files downloaded from the internet or copied onto your computer unchanged. This will help you trace the provenance of the data in the future.
-
-* R’s native file format is .Rds. These files can be imported and exported using readRDS() and saveRDS() for fast and space efficient data storage.
-
-* Use import() from the rio package to efficiently import data from a wide range of formats, avoiding the hassle of loading format-specific libraries.
-
-* Use the readr or data.table equivalents of read.table() to efficiently import large text files.
-
-* Use file.size() and object.size() to keep track of the size of files and R objects and take action if they get too big.
-
-Example of getting data from a webpage:
-
-```{r}
-url = "https://www.monetdb.org/sites/default/files/voc_tsvs.zip"
-download.file(url, "voc_tsvs.zip") # download file
-unzip("voc_tsvs.zip", exdir = "data") # unzip files
-file.remove("voc_tsvs.zip") # tidy up by removing the zip file
-
-url = "https://vincentarelbundock.github.io/Rdatasets/csv/datasets/co2.csv"
-download.file(url, "extdata/co2.csv")
-df_co2 = read_csv("extdata/co2.csv")
-```
 
 # Useful Functions
 
 ```{r}
+#| eval: false
+
 # Update R Stuff
 
 # check and install the latest R version
@@ -215,7 +185,6 @@ small_number
 options(scipen = 0)
 small_number
 ```
-
 
 # Names & Values
 
@@ -616,7 +585,7 @@ Use this to represent an empty vector of arbitrary type or an absent vector.
 
 # Subsetting
 
-## ...for Atomic Vectors
+## Atomic Vectors
 
 ```{r}
 x <- c(2.1, 4.2, 3.3, 5.4)
@@ -913,6 +882,265 @@ Two ways of returning a value: implicitly, where the last evaluated expression i
 If a function cannot complete its assigned task, it should throw an error with `stop()`, which immediately terminates the execution of the function. 
 
 Sometimes a function needs to make temporary changes to the global state. But having to cleanup those changes can be painful (what happens if there’s an error?). To ensure that these changes are undone and that the global state is restored no matter how a function exits, use on.exit() to set up an exit handler. `on.exit()` expressions are always run in order of creation.
+
+## Embracing
+
+"Embracing a variable tells dplyr to use the value stored inside the argument, not the argument as the literal variable name."
+
+Examples of using embracing:
+
+```{r}
+summary6 <- function(data, var) {
+  data |> dplyr::summarize(
+    min = min({{ var }}, na.rm = TRUE),
+    mean = mean({{ var }}, na.rm = TRUE),
+    median = median({{ var }}, na.rm = TRUE),
+    max = max({{ var }}, na.rm = TRUE),
+    n = dplyr::n(),
+    n_miss = sum(is.na({{ var }})),
+    .groups = "drop"
+  )
+}
+
+ggplot2::diamonds |> summary6(carat)
+
+count_prop <- function(df, var, sort = FALSE) {
+  df |>
+    dplyr::count({{ var }}, sort = sort) |>
+    dplyr::mutate(prop = n / sum(n))
+}
+
+ggplot2::diamonds |> count_prop(clarity)
+
+histogram <- function(df, var, binwidth = NULL) {
+  df |> 
+    ggplot2::ggplot(ggplot2::aes(x = {{ var }})) + 
+    ggplot2::geom_histogram(binwidth = binwidth)
+}
+
+ggplot2::diamonds |> histogram(carat, 0.1)
+
+linearity_check <- function(df, x, y) {
+  df |>
+    ggplot2::ggplot(ggplot2::aes(x = {{ x }}, y = {{ y }})) +
+    ggplot2::geom_point() +
+    ggplot2::geom_smooth(method = "loess", formula = y ~ x, color = "red", se = FALSE) +
+    ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = FALSE) 
+}
+```
+
+```{r}
+dplyr::starwars |> 
+  dplyr::filter(mass < 1000) |> 
+  linearity_check(mass, height)
+
+sorted_bars <- function(df, var) {
+  df |> 
+    dplyr::mutate({{ var }} := forcats::fct_rev(
+      forcats::fct_infreq({{ var }})))  |>
+    ggplot2::ggplot(ggplot2::aes(y = {{ var }})) +
+    ggplot2::geom_bar()
+}
+
+ggplot2::diamonds |> sorted_bars(clarity)
+```
+
+"# We have to use a new operator here, :=, because we are generating the variable name based on user-supplied data. Variable names go on the left hand side of =, but R’s syntax doesn’t allow anything to the left of = except for a single literal name. To work around this problem, we use the special operator := which tidy evaluation treats in exactly the same way as =."
+
+Add dynamic label generation:
+
+```{r}
+histogram <- function(df, var, binwidth) {
+  label <- rlang::englue("A histogram of {{var}} with binwidth {binwidth}")
+  
+  df |> 
+    ggplot2::ggplot(ggplot2::aes(x = {{ var }})) + 
+    ggplot2::geom_histogram(binwidth = binwidth) + 
+    ggplot2::labs(title = label)
+}
+
+ggplot2::diamonds |> histogram(carat, 0.1)
+```
+
+## Writing Functions
+
+Functions can take other functions as arguments:
+
+```{r}
+h <- function(number, f){
+  f(number)
+}
+
+h(4, sqrt)
+
+# If the input function might have additional inputs
+# use the ellipsis '...'
+
+h <- function(number, f, ...){
+  f(number, ...)
+}
+
+h(c(1, 2, NA, 3), mean, na.rm = TRUE)
+```
+
+A function can output another function. These are 'function factories'.
+
+```{r}
+# This example turns warnings into errors
+
+strictly <- function(f){
+  function(...){
+    tryCatch({
+      f(...)
+    },
+    warning = function(warning)stop("Can't do that chief"))
+  }
+}
+
+strictly(sqrt)(4)
+strictly(sqrt)(-4)
+```
+
+You can make a function argument optional by setting its value to NULL.
+
+Recursive functions in R are very slow.
+
+It's better to have functions return lists of information, rather than printing things out to the console.
+
+Loops are slow - instead try to lapply or map a function to a list.
+
+```{r}
+data(iris)
+library(ggplot2)
+
+iris_nest <- iris |>
+  dplyr::group_nest(Species) 
+
+iris_nest |>
+  dplyr::mutate(nrows = purrr::map(data, nrow))
+
+make_plot <- function(a, b){
+  ggplot(data = a) +
+    geom_point(
+      aes(
+        x = Sepal.Length,
+        y = Petal.Length
+      ),
+      alpha = .5
+    ) + 
+    labs(
+      title = b
+    )
+}
+
+iris_nest <- iris_nest |>
+  dplyr::mutate(
+    plots = map2(
+      .x = data,
+      .y = Species,
+      .f = make_plot
+    )
+  )
+
+iris_nest$plots
+```
+
+# Iteration
+
+`across()` function:
+
+```{r}
+df <- tibble::tibble(
+  a = rnorm(10),
+  b = rnorm(10),
+  c = rnorm(10),
+  d = rnorm(10)
+)
+
+df |> dplyr::summarize(
+  n = dplyr::n(),
+  across(a:d, median),
+)
+```
+
+"the first argument, .cols, specifies which columns you want to iterate over, and the second argument, .fns, specifies what to do with each column. You can use the .names argument when you need additional control over the names of output columns, which is particularly important when you use across() with mutate()"
+
+For selecting columns you can use `everywhere()` or `where()` - the latter takes an argument like `is.logical` or `is.numeric` to select a particular type of column.
+
+Use `if_any` and `if_all` with `across` and `filter`.
+
+```{r}
+#| eval: false
+
+# same as df_miss |> filter(is.na(a) | is.na(b) | is.na(c) | is.na(d))
+df_miss |> filter(if_any(a:d, is.na))
+
+# same as df_miss |> filter(is.na(a) & is.na(b) & is.na(c) & is.na(d))
+df_miss |> filter(if_all(a:d, is.na))
+```
+
+An example using `across()` in a function:
+
+```{r}
+#| eval: false
+
+expand_dates <- function(df) {
+  df |> 
+    mutate(
+      across(where(is.Date), list(year = year, month = month, day = mday))
+    )
+}
+
+df_date <- tibble(
+  name = c("Amy", "Bob"),
+  date = ymd(c("2009-08-03", "2010-01-16"))
+)
+
+df_date |> 
+  expand_dates()
+```
+
+Multiple vars in a single argument:
+
+```{r}
+#| eval: false
+
+summarize_means <- function(df, summary_vars = where(is.numeric)) {
+  df |> 
+    summarize(
+      across({{ summary_vars }}, \(x) mean(x, na.rm = TRUE)),
+      n = n()
+    )
+}
+```
+
+Iteratively loading data - this example involves loading and combining data from many Excel spreadsheets. 
+
+```{r}
+# List all the files in the directory
+
+paths <- list.files("data/gapminder", pattern = "[.]xlsx$", full.names = TRUE)
+paths
+#>  [1] "data/gapminder/1952.xlsx" "data/gapminder/1957.xlsx"
+#>  [3] "data/gapminder/1962.xlsx" "data/gapminder/1967.xlsx"
+#>  [5] "data/gapminder/1972.xlsx" "data/gapminder/1977.xlsx"
+#>  [7] "data/gapminder/1982.xlsx" "data/gapminder/1987.xlsx"
+#>  [9] "data/gapminder/1992.xlsx" "data/gapminder/1997.xlsx"
+#> [11] "data/gapminder/2002.xlsx" "data/gapminder/2007.xlsx"
+
+# Then use map() to read the files
+files <- map(paths, readxl::read_excel)
+list_rbind(files) # combines a list of dfs to a single df
+
+# If the name of the files contains data (e.g. the year), can get it into the df using this code:
+
+paths |> 
+  set_names(basename) |> 
+  map(readxl::read_excel) |> 
+  list_rbind(names_to = "year") |> 
+  mutate(year = parse_number(year))
+```
+
 
 # Environments
 
@@ -1404,4 +1632,57 @@ forcats::fct_other(df$x, keep = c('A', 'B'), other_level = 'OTHER')
 df$x <- forcats::fct_expand(df$x, 'D') # add a level to x
 forcats::fct_drop(df$x) # drop unused levels
 ```
+
+# Efficiency
+
+* A golden rule in R programming is to access the underlying C/Fortran routines as quickly as possible; the fewer functions calls required to achieve this, the better.
+
+* Pre-allocate objects rather than growing them (e.g. by a for-loop).
+
+* Using 1:length(x) can lead to hard-to-find bugs (e.g. in for-loops) when x has length zero. Instead use seq_along(x) or seq_len(length(x)). 
+DRY: Don't Repeat Yourself; WIT: Write IT down.
+
+## I/O
+
+* If possible, keep the names of local files downloaded from the internet or copied onto your computer unchanged. This will help you trace the provenance of the data in the future.
+
+* R’s native file format is .Rds. These files can be imported and exported using readRDS() and saveRDS() for fast and space efficient data storage.
+
+* Use import() from the rio package to efficiently import data from a wide range of formats, avoiding the hassle of loading format-specific libraries.
+
+* Use the readr or data.table equivalents of read.table() to efficiently import large text files.
+
+* Use file.size() and object.size() to keep track of the size of files and R objects and take action if they get too big.
+
+Example of getting data from a webpage:
+
+```{r}
+#| eval: false
+
+url = "https://www.monetdb.org/sites/default/files/voc_tsvs.zip"
+download.file(url, "voc_tsvs.zip") # download file
+unzip("voc_tsvs.zip", exdir = "data") # unzip files
+file.remove("voc_tsvs.zip") # tidy up by removing the zip file
+
+url = "https://vincentarelbundock.github.io/Rdatasets/csv/datasets/co2.csv"
+download.file(url, "extdata/co2.csv")
+df_co2 = read_csv("extdata/co2.csv")
+```
+
+# Functional Programming
+
+"Functional programming is a paradigm that relies exclusively on the evaluation of functions to achieve the desired result."
+
+The `<<-` operator saves a variable defined within a function to the global environment. (But generally you don't want to be doing this in a function.)
+
+"A referentially transparent function is a function that does not use any variable that is not also one of its inputs...Defining and using such functions must be avoided at all costs because these functions are unpredictable."
+
+From Wikipedia:
+
+"In computer programming, a pure function is a function that has the following properties: \[1\] the function return values are identical for identical arguments (no variation with local static variables, non-local variables, mutable reference arguments or input streams), and \[2\] the function has no side effects (no mutation of local static variables, non-local variables, mutable reference arguments or input/output streams)."
+
+Try to use pure functions.
+
+# Reproducible Workflow
+
 

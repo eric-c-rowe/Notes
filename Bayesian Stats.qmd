@@ -67,7 +67,6 @@ names(tidy_df)
 # Note that "n_[factor]" gets added for number of factor levels
 ```
 
-
 ## Scaling 
 
 * Easily interpreted parameters are best: use natural scales and model them as independent, if possible, or with an easily interpreted dependence structure.
@@ -315,7 +314,6 @@ mcmc_dens_overlay(MODEL, pars = "PARAMETER")
 mcmc_acf(MODEL, pars = "PARAMETER")
 # --- plot should drop down to around 0 quickly
 ```
-
 
 ## Fake data simulation
 
