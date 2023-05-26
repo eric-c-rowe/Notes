@@ -22,6 +22,15 @@ installr::install.rtools()
 
 # update installed CRAN packages
 update.packages() 
+
+install.packages(package, 
+                 type = 'source', # This occasionally fixes installation problems
+                 dependencies = TRUE # Also install uninstalled dependencies
+                 )
+
+# Code to show package dependencies
+pack <- available.packages()
+pack["package","Depends"]
 ```
 
 ```{r}
